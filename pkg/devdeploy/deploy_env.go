@@ -11,73 +11,80 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/elasticache"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
 
-/*
-	// Register informs the sqlxtrace package of the driver that we will be using in our program.
-	// It uses a default service name, in the below case "postgres.db". To use a custom service
-	// name use RegisterWithServiceName.
-	sqltrace.Register(db.Driver, &pq.Driver{}, sqltrace.WithServiceName("devops:migrate"))
-	masterDb, err := sqlxtrace.Open(db.Driver, db.URL())
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	defer masterDb.Close()
+// DeploymentEnv defines the details needed to build the target deployment environment for AWS.
+type DeploymentEnv struct {
+	*BuildEnv `validate:"required,dive,required"`
 
-	// Start the database migrations.
-	log.Printf("\t\tStart migrations.")
-	if err = schema.Migrate(masterDb, log, false); err != nil {
-		return errors.WithStack(err)
-	}
-	log.Printf("\t\tFinished migrations.")
-*/
+	// AwsEc2Vpc defines the name of the VPC and details needed to create if does not exist.
+	AwsEc2Vpc *AwsEc2Vpc
 
-// ProjectNameCamel takes a project name and returns the camel cased version.
-func (devEnv *DeploymentEnv) ProjectNameCamel() string {
-	s := strings.Replace(devEnv.ProjectName, "_", " ", -1)
-	s = strings.Replace(s, "-", " ", -1)
-	s = strcase.ToCamel(s)
-	return s
+	// AwsEc2SecurityGroup defines the name of the EC2 security group and details needed to create if does not exist.
+	AwsEc2SecurityGroup *AwsEc2SecurityGroup
+
+	// GitlabRunnerEc2SecurityGroupName defines the name of the security group that was used to deploy the GitLab
+	// Runners on AWS. This will allow the deploy script to ensure the GitLab Runners have access to community to through
+	// the deployment EC2 Security Group.
+	GitlabRunnerEc2SecurityGroupName string `validate:"required"`
+
+	// AwsS3BucketPrivate sets the S3 bucket used internally for services.
+	AwsS3BucketPrivate *AwsS3Bucket
+
+	// AwsS3BucketPublic sets the S3 bucket used to host static files for all services.
+	AwsS3BucketPublic *AwsS3Bucket
+
+	// AwsS3BucketPublicKeyPrefix defines the base S3 key prefix used to upload static files.
+	AwsS3BucketPublicKeyPrefix string `validate:"omitempty"`
+
+	// AwsElasticCacheCluster defines the name of the cache cluster and the details needed to create if does not exist.
+	AwsElasticCacheCluster *AwsElasticCacheCluster
+
+	// AwsRdsDBCluster defines the name of the rds cluster and the details needed to create if does not exist.
+	// This is only needed for Aurora storage engine.
+	AwsRdsDBCluster *AwsRdsDBCluster
+
+	// AwsRdsDBInstance defines the name of the rds database instance and the detailed needed to create doesn't exist.
+	AwsRdsDBInstance *AwsRdsDBInstance
+
+	// DBConnInfo defines the database connection details.
+	DBConnInfo *DBConnInfo
 }
 
 // SecretID returns the secret name with a standard prefix.
-func (devEnv *DeploymentEnv) SecretID(secretName string) string {
-	return filepath.Join(devEnv.ProjectName, devEnv.Env, secretName)
+func (deployEnv *DeploymentEnv) SecretID(secretName string) string {
+	return filepath.Join(deployEnv.ProjectName, deployEnv.Env, secretName)
 }
 
-// AwsSession returns the AWS session based on the defined credentials.
-func (devEnv *DeploymentEnv) AwsSession() *session.Session {
-	return devEnv.AwsCredentials.Session()
-}
+// Ec2TagResource is a helper function to tag EC2 resources.
+func (deployEnv *DeploymentEnv) Ec2TagResource(resource, name string, tags ...Tag) error {
+	svc := ec2.New(deployEnv.AwsSession())
 
-// Ec2TagResource is ah elper function to tag EC2 resources.
-func (devEnv *DeploymentEnv) Ec2TagResource(resource, name string, tags ...*ec2.Tag) error {
-	svc := ec2.New(devEnv.AwsSession())
-
-	ec2Tags := []*ec2.Tag{
-		{Key: aws.String(AwsTagNameProject), Value: aws.String(devEnv.ProjectName)},
-		{Key: aws.String(AwsTagNameEnv), Value: aws.String(devEnv.Env)},
+	existingKeys := make(map[string]bool)
+	ec2Tags := []*ec2.Tag{}
+	for _, t := range tags {
+		ec2Tags = append(ec2Tags, &ec2.Tag{Key: aws.String(t.Key), Value: aws.String(t.Value)})
+		existingKeys[t.Key] = true
 	}
 
-	if name != "" {
+	if !existingKeys[AwsTagNameProject] {
+		ec2Tags = append(ec2Tags, &ec2.Tag{Key: aws.String(AwsTagNameProject), Value: aws.String(deployEnv.ProjectName)})
+	}
+
+	if !existingKeys[AwsTagNameEnv] {
+		ec2Tags = append(ec2Tags, &ec2.Tag{Key: aws.String(AwsTagNameEnv), Value: aws.String(deployEnv.Env)})
+	}
+
+	if !existingKeys[AwsTagNameName] && name != "" {
 		ec2Tags = append(ec2Tags, &ec2.Tag{Key: aws.String(AwsTagNameName), Value: aws.String(name)})
-	}
-
-	if tags != nil {
-		for _, t := range tags {
-			ec2Tags = append(ec2Tags, t)
-		}
 	}
 
 	_, err := svc.CreateTags(&ec2.CreateTagsInput{
@@ -93,88 +100,31 @@ func (devEnv *DeploymentEnv) Ec2TagResource(resource, name string, tags ...*ec2.
 
 // SetupDeploymentEnv ensures all the resources for the project are setup before deploying a single ECS service or
 // Lambda function. This will ensure the following AWS are available for deployment:
-// 1. AWS ECR repository
-// 2. AWS EC2 VPC
-// 3. AWS EC2 Security Group
-// 4. AWS S3 buckets
-// 5. AWS Elastic Cache Cluster
-// 6. AWS RDS database Cluster
-// 7. AWS RDS database Instance
-func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
+// 1. AWS EC2 VPC
+// 2. AWS EC2 Security Group
+// 3. AWS S3 buckets
+// 4. AWS Elastic Cache Cluster
+// 5. AWS RDS database Cluster
+// 6. AWS RDS database Instance
+func SetupDeploymentEnv(log *log.Logger, buildEnv *BuildEnv, deployEnv *DeploymentEnv) error {
+	deployEnv.BuildEnv = buildEnv
 
-	log.Println("Setup Deployment Environment")
+	log.Printf("Setup deployment environment %s\n", deployEnv.Env)
 
 	log.Println("\tValidate request.")
-	errs := validator.New().Struct(devEnv)
+	errs := validator.New().Struct(deployEnv)
 	if errs != nil {
 		return errs
 	}
 
-	// Step 1: Find or create the AWS ECR repository.
-	{
-		log.Println("\tECR - Get or create repository")
-
-		svc := ecr.New(devEnv.AwsSession())
-
-		repositoryName := devEnv.AwsEcrRepository.RepositoryName
-
-		descRes, err := svc.DescribeRepositories(&ecr.DescribeRepositoriesInput{
-			RepositoryNames: []*string{aws.String(repositoryName)},
-		})
-		if err != nil {
-			// The repository should have been created by build or manually created and should exist at this point.
-			return errors.Wrapf(err, "Failed to describe repository '%s'.", repositoryName)
-		} else if len(descRes.Repositories) > 0 {
-			devEnv.AwsEcrRepository.result = descRes.Repositories[0]
-		}
-
-		if devEnv.AwsEcrRepository.result == nil {
-			input, err := devEnv.AwsEcrRepository.Input()
-			if err != nil {
-				return err
-			}
-
-			// If no repository was found, create one.
-			createRes, err := svc.CreateRepository(input)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to create repository '%s'", repositoryName)
-			}
-			devEnv.AwsEcrRepository.result = createRes.Repository
-			log.Printf("\t\tCreated: %s", *devEnv.AwsEcrRepository.result.RepositoryArn)
-		} else {
-			log.Printf("\t\tFound: %s", *devEnv.AwsEcrRepository.result.RepositoryArn)
-
-			log.Println("\t\tChecking old ECR images.")
-			maxImages := devEnv.AwsEcrRepository.MaxImages
-			if maxImages == 0 || maxImages > AwsRegistryMaximumImages {
-				maxImages = AwsRegistryMaximumImages
-			}
-			delIds, err := EcrPurgeImages(devEnv.AwsCredentials, repositoryName, maxImages)
-			if err != nil {
-				return err
-			}
-
-			// Since ECR has max number of repository images, need to delete old ones so can stay under limit.
-			// If there are image IDs to delete, delete them.
-			if len(delIds) > 0 {
-				log.Printf("\t\tDeleted %d images that exceeded limit of %d", len(delIds), maxImages)
-				for _, imgId := range delIds {
-					log.Printf("\t\t\t%s", *imgId.ImageTag)
-				}
-			}
-		}
-
-		log.Printf("\t%s\tECR Respository available\n", Success)
-	}
-
-	// Step 2: Find or create the AWS EC2 VPC.
+	// Step 1: Find or create the AWS EC2 VPC.
 	{
 		log.Println("\tEC2 - Find Subnets")
 
-		svc := ec2.New(devEnv.AwsSession())
+		svc := ec2.New(deployEnv.AwsSession())
 
 		var subnets []*ec2.Subnet
-		if devEnv.AwsEc2Vpc.IsDefault {
+		if deployEnv.AwsEc2Vpc.IsDefault {
 			log.Println("\t\tFind all subnets are that default for each availability zone in the zone")
 
 			// Find all subnets that are default for each availability zone.
@@ -195,41 +145,41 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				if s.VpcId == nil {
 					continue
 				}
-				if devEnv.AwsEc2Vpc.VpcId == "" {
-					devEnv.AwsEc2Vpc.VpcId = *s.VpcId
+				if deployEnv.AwsEc2Vpc.VpcId == "" {
+					deployEnv.AwsEc2Vpc.VpcId = *s.VpcId
 
-					log.Printf("\t\tFound VPC: %s", devEnv.AwsEc2Vpc.VpcId)
+					log.Printf("\t\tFound VPC: %s", deployEnv.AwsEc2Vpc.VpcId)
 
-				} else if devEnv.AwsEc2Vpc.VpcId != *s.VpcId {
-					return errors.Errorf("Invalid subnet %s, all subnets should belong to the same VPC, expected %s, got %s", *s.SubnetId, devEnv.AwsEc2Vpc.VpcId, *s.VpcId)
+				} else if deployEnv.AwsEc2Vpc.VpcId != *s.VpcId {
+					return errors.Errorf("Invalid subnet %s, all subnets should belong to the same VPC, expected %s, got %s", *s.SubnetId, deployEnv.AwsEc2Vpc.VpcId, *s.VpcId)
 				}
 			}
 		} else {
 
-			if devEnv.AwsEc2Vpc.VpcId != "" {
-				log.Printf("\t\tFind VPC '%s'\n", devEnv.AwsEc2Vpc.VpcId)
+			if deployEnv.AwsEc2Vpc.VpcId != "" {
+				log.Printf("\t\tFind VPC '%s'\n", deployEnv.AwsEc2Vpc.VpcId)
 
 				// Find all subnets that are default for each availability zone.
 				err := svc.DescribeVpcsPages(&ec2.DescribeVpcsInput{
-					VpcIds: aws.StringSlice([]string{devEnv.AwsEc2Vpc.VpcId}),
+					VpcIds: aws.StringSlice([]string{deployEnv.AwsEc2Vpc.VpcId}),
 				}, func(res *ec2.DescribeVpcsOutput, lastPage bool) bool {
 					for _, s := range res.Vpcs {
-						if *s.VpcId == devEnv.AwsEc2Vpc.VpcId {
-							devEnv.AwsEc2Vpc.result = s
+						if *s.VpcId == deployEnv.AwsEc2Vpc.VpcId {
+							deployEnv.AwsEc2Vpc.result = s
 							break
 						}
 					}
 					return !lastPage
 				})
 				if err != nil {
-					return errors.Wrapf(err, "Failed to describe vpc '%s'.", devEnv.AwsEc2Vpc.VpcId)
+					return errors.Wrapf(err, "Failed to describe vpc '%s'.", deployEnv.AwsEc2Vpc.VpcId)
 				}
 			}
 
 			// If there is no VPC id set and IsDefault is false, a new VPC needs to be created with the given details.
-			if devEnv.AwsEc2Vpc.result == nil {
+			if deployEnv.AwsEc2Vpc.result == nil {
 
-				input, err := devEnv.AwsEc2Vpc.Input()
+				input, err := deployEnv.AwsEc2Vpc.Input()
 				if err != nil {
 					return err
 				}
@@ -238,13 +188,13 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				if err != nil {
 					return errors.Wrap(err, "Failed to create VPC")
 				}
-				devEnv.AwsEc2Vpc.result = createRes.Vpc
-				devEnv.AwsEc2Vpc.VpcId = *createRes.Vpc.VpcId
-				log.Printf("\t\tCreated VPC %s", devEnv.AwsEc2Vpc.VpcId)
+				deployEnv.AwsEc2Vpc.result = createRes.Vpc
+				deployEnv.AwsEc2Vpc.VpcId = *createRes.Vpc.VpcId
+				log.Printf("\t\tCreated VPC %s", deployEnv.AwsEc2Vpc.VpcId)
 
-				err = devEnv.Ec2TagResource(*createRes.Vpc.VpcId, "")
+				err = deployEnv.Ec2TagResource(*createRes.Vpc.VpcId, "", deployEnv.AwsEc2Vpc.Tags...)
 				if err != nil {
-					return errors.Wrapf(err, "Failed to tag vpc '%s'.", devEnv.AwsEc2Vpc.VpcId)
+					return errors.Wrapf(err, "Failed to tag vpc '%s'.", deployEnv.AwsEc2Vpc.VpcId)
 				}
 
 			} else {
@@ -253,18 +203,18 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				// Find all subnets that are default for each availability zone.
 				err := svc.DescribeSubnetsPages(&ec2.DescribeSubnetsInput{}, func(res *ec2.DescribeSubnetsOutput, lastPage bool) bool {
 					for _, s := range res.Subnets {
-						if *s.VpcId == devEnv.AwsEc2Vpc.VpcId {
+						if *s.VpcId == deployEnv.AwsEc2Vpc.VpcId {
 							subnets = append(subnets, s)
 						}
 					}
 					return !lastPage
 				})
 				if err != nil {
-					return errors.Wrapf(err, "Failed to find subnets for VPC '%s'", devEnv.AwsEc2Vpc.VpcId)
+					return errors.Wrapf(err, "Failed to find subnets for VPC '%s'", deployEnv.AwsEc2Vpc.VpcId)
 				}
 			}
 
-			for _, sn := range devEnv.AwsEc2Vpc.Subnets {
+			for _, sn := range deployEnv.AwsEc2Vpc.Subnets {
 				var found bool
 				for _, t := range subnets {
 					if t.CidrBlock != nil && *t.CidrBlock == sn.CidrBlock {
@@ -274,7 +224,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				}
 
 				if !found {
-					input, err := sn.Input(devEnv.AwsEc2Vpc.VpcId)
+					input, err := sn.Input(deployEnv.AwsEc2Vpc.VpcId)
 					if err != nil {
 						return err
 					}
@@ -287,7 +237,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 
 					log.Printf("\t\tCreated Subnet %s", *createRes.Subnet.SubnetId)
 
-					err = devEnv.Ec2TagResource(*createRes.Subnet.SubnetId, "")
+					err = deployEnv.Ec2TagResource(*createRes.Subnet.SubnetId, "", sn.Tags...)
 					if err != nil {
 						return errors.Wrapf(err, "Failed to tag subnet '%s'.", *createRes.Subnet.SubnetId)
 					}
@@ -302,33 +252,33 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			return errors.New("Failed to find any subnets, expected at least 1")
 		}
 
-		log.Printf("\t\tVPC '%s' has %d subnets", devEnv.AwsEc2Vpc.VpcId)
+		log.Printf("\t\tVPC '%s' has %d subnets", deployEnv.AwsEc2Vpc.VpcId)
 		for _, sn := range subnets {
-			devEnv.AwsEc2Vpc.subnetIds = append(devEnv.AwsEc2Vpc.subnetIds, *sn.SubnetId)
+			deployEnv.AwsEc2Vpc.subnetIds = append(deployEnv.AwsEc2Vpc.subnetIds, *sn.SubnetId)
 			log.Printf("\t\t\tSubnet: %s", *sn.SubnetId)
 		}
 
 		log.Printf("\t%s\tEC2 subnets available\n", Success)
 	}
 
-	// Step 3: Find or create  AWS EC2 Security Group.
+	// Step 2: Find or create  AWS EC2 Security Group.
 	var securityGroupId string
 	{
 		log.Println("\tEC2 - Find Security Group")
 
-		svc := ec2.New(devEnv.AwsSession())
+		svc := ec2.New(deployEnv.AwsSession())
 
-		securityGroupName := devEnv.AwsEc2SecurityGroup.GroupName
+		securityGroupName := deployEnv.AwsEc2SecurityGroup.GroupName
 
 		// Find all the security groups and then parse the group name to get the Id of the security group.
 		var runnerSgId string
 		err := svc.DescribeSecurityGroupsPages(&ec2.DescribeSecurityGroupsInput{
-			GroupNames: aws.StringSlice([]string{securityGroupName, devEnv.GitlabRunnerEc2SecurityGroupName}),
+			GroupNames: aws.StringSlice([]string{securityGroupName, deployEnv.GitlabRunnerEc2SecurityGroupName}),
 		}, func(res *ec2.DescribeSecurityGroupsOutput, lastPage bool) bool {
 			for _, s := range res.SecurityGroups {
 				if *s.GroupName == securityGroupName {
-					devEnv.AwsEc2SecurityGroup.result = s
-				} else if *s.GroupName == devEnv.GitlabRunnerEc2SecurityGroupName {
+					deployEnv.AwsEc2SecurityGroup.result = s
+				} else if *s.GroupName == deployEnv.GitlabRunnerEc2SecurityGroupName {
 					runnerSgId = *s.GroupId
 				}
 			}
@@ -340,8 +290,8 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			}
 		}
 
-		if devEnv.AwsEc2SecurityGroup.result == nil {
-			input, err := devEnv.AwsEc2SecurityGroup.Input(devEnv.AwsEc2Vpc.VpcId)
+		if deployEnv.AwsEc2SecurityGroup.result == nil {
+			input, err := deployEnv.AwsEc2SecurityGroup.Input(deployEnv.AwsEc2Vpc.VpcId)
 			if err != nil {
 				return err
 			}
@@ -351,7 +301,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			if err != nil {
 				return errors.Wrapf(err, "Failed to create security group '%s'", securityGroupName)
 			}
-			devEnv.AwsEc2SecurityGroup.result = &ec2.SecurityGroup{
+			deployEnv.AwsEc2SecurityGroup.result = &ec2.SecurityGroup{
 				GroupId:   createRes.GroupId,
 				GroupName: input.GroupName,
 				VpcId:     input.VpcId,
@@ -359,7 +309,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 
 			log.Printf("\t\tCreated: %s", securityGroupName)
 
-			err = devEnv.Ec2TagResource(*createRes.GroupId, "")
+			err = deployEnv.Ec2TagResource(*createRes.GroupId, "", deployEnv.AwsEc2SecurityGroup.Tags...)
 			if err != nil {
 				return errors.Wrapf(err, "Failed to tag security group '%s'.", securityGroupName)
 			}
@@ -367,7 +317,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			log.Printf("\t\tFound: %s", securityGroupName)
 		}
 
-		securityGroupId = *devEnv.AwsEc2SecurityGroup.result.GroupId
+		securityGroupId = *deployEnv.AwsEc2SecurityGroup.result.GroupId
 
 		// Create a list of ingress rules for the security group.
 		ingressInputs := []*ec2.AuthorizeSecurityGroupIngressInput{
@@ -387,15 +337,15 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		}
 
 		// When a database cluster/instance is defined, deploy needs access to handle executing schema migration.
-		if devEnv.AwsRdsDBCluster != nil || devEnv.AwsRdsDBInstance != nil {
+		if deployEnv.AwsRdsDBCluster != nil || deployEnv.AwsRdsDBInstance != nil {
 			// The gitlab runner security group is required when a db instance is defined.
 			if runnerSgId == "" {
-				return errors.Errorf("Failed to find security group '%s'", devEnv.GitlabRunnerEc2SecurityGroupName)
+				return errors.Errorf("Failed to find security group '%s'", deployEnv.GitlabRunnerEc2SecurityGroupName)
 			}
 
 			// Enable GitLab runner to communicate with deployment created services.
 			ingressInputs = append(ingressInputs, &ec2.AuthorizeSecurityGroupIngressInput{
-				SourceSecurityGroupName: aws.String(devEnv.GitlabRunnerEc2SecurityGroupName),
+				SourceSecurityGroupName: aws.String(deployEnv.GitlabRunnerEc2SecurityGroupName),
 				GroupId:                 aws.String(securityGroupId),
 			})
 		}
@@ -413,15 +363,15 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		log.Printf("\t%s\tSecurity Group configured\n", Success)
 	}
 
-	// Step 4: Find or create the list of AWS S3 buckets.
+	// Step 3: Find or create the list of AWS S3 buckets.
 	{
 		log.Println("\tS3 - Setup Buckets")
 
-		svc := s3.New(devEnv.AwsSession())
+		svc := s3.New(deployEnv.AwsSession())
 
 		s3Buckets := []*AwsS3Bucket{
-			devEnv.AwsS3BucketPrivate,
-			devEnv.AwsS3BucketPublic,
+			deployEnv.AwsS3BucketPrivate,
+			deployEnv.AwsS3BucketPublic,
 		}
 
 		for _, s3Bucket := range s3Buckets {
@@ -528,7 +478,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			if s3Bucket.CloudFront != nil {
 				log.Println("\t\t\t\tSetup Cloudfront Distribution")
 
-				bucketLoc := devEnv.AwsCredentials.Region
+				bucketLoc := deployEnv.AwsCredentials.Region
 				if s3Bucket.LocationConstraint != nil && *s3Bucket.LocationConstraint != "" {
 					bucketLoc = *s3Bucket.LocationConstraint
 				}
@@ -575,7 +525,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 
 				targetOriginId := *input.DistributionConfig.DefaultCacheBehavior.TargetOriginId
 
-				_, err = cloudfront.New(devEnv.AwsSession()).CreateDistribution(input)
+				_, err = cloudfront.New(deployEnv.AwsSession()).CreateDistribution(input)
 				if err != nil {
 					if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != cloudfront.ErrCodeDistributionAlreadyExists) {
 						return errors.Wrapf(err, "Failed to create cloudfront distribution '%s'", targetOriginId)
@@ -594,13 +544,13 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		log.Printf("\t%s\tS3 buckets configured successfully.\n", Success)
 	}
 
-	// Step 5: Find or create the AWS Elastic Cache Cluster.
-	if devEnv.AwsElasticCacheCluster != nil {
+	// Step 4: Find or create the AWS Elastic Cache Cluster.
+	if deployEnv.AwsElasticCacheCluster != nil {
 		log.Println("\tElastic Cache - Get or Create Cache Cluster")
 
-		svc := elasticache.New(devEnv.AwsSession())
+		svc := elasticache.New(deployEnv.AwsSession())
 
-		cacheClusterId := devEnv.AwsElasticCacheCluster.CacheClusterId
+		cacheClusterId := deployEnv.AwsElasticCacheCluster.CacheClusterId
 
 		// Find Elastic Cache cluster given Id.
 		var cacheCluster *elasticache.CacheCluster
@@ -614,12 +564,12 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			}
 		} else if len(descRes.CacheClusters) > 0 {
 			cacheCluster = descRes.CacheClusters[0]
-			devEnv.AwsElasticCacheCluster.result = cacheCluster
+			deployEnv.AwsElasticCacheCluster.result = cacheCluster
 		}
 
-		if devEnv.AwsElasticCacheCluster.result == nil {
+		if deployEnv.AwsElasticCacheCluster.result == nil {
 
-			input, err := devEnv.AwsElasticCacheCluster.Input([]string{securityGroupId})
+			input, err := deployEnv.AwsElasticCacheCluster.Input([]string{securityGroupId})
 			if err != nil {
 				return err
 			}
@@ -630,7 +580,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				return errors.Wrapf(err, "failed to create cluster '%s'", cacheClusterId)
 			}
 			cacheCluster = createRes.CacheCluster
-			devEnv.AwsElasticCacheCluster.result = cacheCluster
+			deployEnv.AwsElasticCacheCluster.result = cacheCluster
 
 			log.Printf("\t\tCreated: %s", *cacheCluster.CacheClusterId)
 		} else {
@@ -656,8 +606,8 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		_, err = svc.AddTagsToResource(&elasticache.AddTagsToResourceInput{
 			ResourceName: aws.String(cacheClusterId),
 			Tags: []*elasticache.Tag{
-				{Key: aws.String(AwsTagNameProject), Value: aws.String(devEnv.ProjectName)},
-				{Key: aws.String(AwsTagNameEnv), Value: aws.String(devEnv.Env)},
+				{Key: aws.String(AwsTagNameProject), Value: aws.String(deployEnv.ProjectName)},
+				{Key: aws.String(AwsTagNameEnv), Value: aws.String(deployEnv.Env)},
 			},
 		})
 		if err != nil {
@@ -665,10 +615,10 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		}
 
 		// If there are custom cache group parameters set, then create a new group and keep them modified.
-		if len(devEnv.AwsElasticCacheCluster.ParameterNameValues) > 0 {
+		if len(deployEnv.AwsElasticCacheCluster.ParameterNameValues) > 0 {
 
 			customCacheParameterGroupName := fmt.Sprintf("%s-%s%s",
-				strings.ToLower(devEnv.ProjectNameCamel()),
+				strings.ToLower(deployEnv.ProjectNameCamel()),
 				*cacheCluster.Engine,
 				*cacheCluster.EngineVersion)
 
@@ -712,7 +662,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			if *cacheCluster.CacheParameterGroup.CacheParameterGroupName == customCacheParameterGroupName {
 				log.Printf("\t\tUpdating Cache Parameter Group : %s", customCacheParameterGroupName)
 
-				input, err := devEnv.AwsElasticCacheCluster.CacheParameterGroupInput(customCacheParameterGroupName)
+				input, err := deployEnv.AwsElasticCacheCluster.CacheParameterGroupInput(customCacheParameterGroupName)
 				if err != nil {
 					return err
 				}
@@ -721,7 +671,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					return errors.Wrapf(err, "failed to modify cache parameter group '%s'", *cacheCluster.CacheParameterGroup.CacheParameterGroupName)
 				}
 
-				for _, p := range devEnv.AwsElasticCacheCluster.ParameterNameValues {
+				for _, p := range deployEnv.AwsElasticCacheCluster.ParameterNameValues {
 					log.Printf("\t\t\tSet '%s' to '%s'", p.ParameterName, p.ParameterValue)
 				}
 			}
@@ -740,30 +690,30 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				}
 			} else if len(descRes.CacheClusters) > 0 {
 				cacheCluster = descRes.CacheClusters[0]
-				devEnv.AwsElasticCacheCluster.result = cacheCluster
+				deployEnv.AwsElasticCacheCluster.result = cacheCluster
 			}
 		}
 
 		log.Printf("\t%s\tElastic Cache cluster configured for %s\n", Success, *cacheCluster.Engine)
 	}
 
-	// Step 6: Find or create the AWS RDS database Cluster.
+	// Step 5: Find or create the AWS RDS database Cluster.
 	// This is only used when service uses Aurora via RDS for serverless Postgres and database cluster is defined.
 	// Aurora Postgres is limited to specific AWS regions and thus not used by default.
 	// If an Aurora Postgres cluster is defined, ensure it exists with RDS else create a new one.
-	if devEnv.AwsRdsDBCluster != nil {
+	if deployEnv.AwsRdsDBCluster != nil {
 		log.Println("\tRDS - Get or Create Database Cluster")
 
-		svc := rds.New(devEnv.AwsSession())
+		svc := rds.New(deployEnv.AwsSession())
 
-		dBClusterIdentifier := devEnv.AwsRdsDBCluster.DBClusterIdentifier
+		dBClusterIdentifier := deployEnv.AwsRdsDBCluster.DBClusterIdentifier
 
 		// Secret ID used to store the DB username and password across deploys.
-		dbSecretId := devEnv.SecretID(dBClusterIdentifier)
+		dbSecretId := deployEnv.SecretID(dBClusterIdentifier)
 
 		// Retrieve the current secret value if something is stored.
 		{
-			sm := secretsmanager.New(devEnv.AwsSession())
+			sm := secretsmanager.New(deployEnv.AwsSession())
 			res, err := sm.GetSecretValue(&secretsmanager.GetSecretValueInput{
 				SecretId: aws.String(dbSecretId),
 			})
@@ -772,7 +722,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					return errors.Wrapf(err, "Failed to get value for secret id %s", dbSecretId)
 				}
 			} else {
-				err = json.Unmarshal([]byte(*res.SecretString), &devEnv.DBConnInfo)
+				err = json.Unmarshal([]byte(*res.SecretString), &deployEnv.DBConnInfo)
 				if err != nil {
 					return errors.Wrap(err, "Failed to json decode db credentials")
 				}
@@ -788,31 +738,31 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				return errors.Wrapf(err, "Failed to describe database cluster '%s'", dBClusterIdentifier)
 			}
 		} else if len(descRes.DBClusters) > 0 {
-			devEnv.AwsRdsDBCluster.result = descRes.DBClusters[0]
+			deployEnv.AwsRdsDBCluster.result = descRes.DBClusters[0]
 		}
 
-		if devEnv.AwsRdsDBCluster.result == nil {
-			if devEnv.DBConnInfo != nil && devEnv.DBConnInfo.Pass != "" {
-				devEnv.AwsRdsDBCluster.MasterUserPassword = devEnv.DBConnInfo.User
-				devEnv.AwsRdsDBCluster.MasterUserPassword = devEnv.DBConnInfo.Pass
+		if deployEnv.AwsRdsDBCluster.result == nil {
+			if deployEnv.DBConnInfo != nil && deployEnv.DBConnInfo.Pass != "" {
+				deployEnv.AwsRdsDBCluster.MasterUserPassword = deployEnv.DBConnInfo.User
+				deployEnv.AwsRdsDBCluster.MasterUserPassword = deployEnv.DBConnInfo.Pass
 			}
 
 			// Store the secret first in the event that create fails.
-			if devEnv.DBConnInfo == nil {
+			if deployEnv.DBConnInfo == nil {
 				// Only set the password right now,
 				// all other configuration details will be set after the database instance is created.
-				devEnv.DBConnInfo = &DBConnInfo{
-					Pass: devEnv.AwsRdsDBCluster.MasterUserPassword,
+				deployEnv.DBConnInfo = &DBConnInfo{
+					Pass: deployEnv.AwsRdsDBCluster.MasterUserPassword,
 				}
 
 				// Json encode the db details to be stored as secret text.
-				dat, err := json.Marshal(devEnv.DBConnInfo)
+				dat, err := json.Marshal(deployEnv.DBConnInfo)
 				if err != nil {
 					return errors.Wrap(err, "Failed to marshal db credentials")
 				}
 
 				// Create the new entry in AWS Secret Manager with the database password.
-				sm := secretsmanager.New(devEnv.AwsSession())
+				sm := secretsmanager.New(deployEnv.AwsSession())
 				_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
 					Name:         aws.String(dbSecretId),
 					SecretString: aws.String(string(dat)),
@@ -823,7 +773,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				log.Printf("\t\tStored Secret\n")
 			}
 
-			input, err := devEnv.AwsRdsDBCluster.Input([]string{securityGroupId})
+			input, err := deployEnv.AwsRdsDBCluster.Input([]string{securityGroupId})
 			if err != nil {
 				return err
 			}
@@ -833,14 +783,14 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			if err != nil {
 				return errors.Wrapf(err, "Failed to create cluster '%s'", dBClusterIdentifier)
 			}
-			devEnv.AwsRdsDBCluster.result = createRes.DBCluster
+			deployEnv.AwsRdsDBCluster.result = createRes.DBCluster
 
-			log.Printf("\t\tCreated: %s", *devEnv.AwsRdsDBCluster.result.DBClusterArn)
+			log.Printf("\t\tCreated: %s", *deployEnv.AwsRdsDBCluster.result.DBClusterArn)
 		} else {
-			log.Printf("\t\tFound: %s", *devEnv.AwsRdsDBCluster.result.DBClusterArn)
+			log.Printf("\t\tFound: %s", *deployEnv.AwsRdsDBCluster.result.DBClusterArn)
 		}
 
-		dbCluster := *devEnv.AwsRdsDBCluster.result
+		dbCluster := *deployEnv.AwsRdsDBCluster.result
 
 		// The status of the cluster.
 		log.Printf("\t\t\tStatus: %s", *dbCluster.Status)
@@ -849,23 +799,23 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		// DB cluster was successfully created, but the secret failed to save. The DB details host should be empty or
 		// match the current cluster endpoint.
 		curHost := *dbCluster.Endpoint
-		if curHost != devEnv.DBConnInfo.Host {
+		if curHost != deployEnv.DBConnInfo.Host {
 
 			// Copy the cluster details to the DB struct.
-			devEnv.DBConnInfo.Host = curHost
-			devEnv.DBConnInfo.User = *dbCluster.MasterUsername
-			devEnv.DBConnInfo.Database = *dbCluster.DatabaseName
-			devEnv.DBConnInfo.Driver = *dbCluster.Engine
-			devEnv.DBConnInfo.DisableTLS = false
+			deployEnv.DBConnInfo.Host = curHost
+			deployEnv.DBConnInfo.User = *dbCluster.MasterUsername
+			deployEnv.DBConnInfo.Database = *dbCluster.DatabaseName
+			deployEnv.DBConnInfo.Driver = *dbCluster.Engine
+			deployEnv.DBConnInfo.DisableTLS = false
 
 			// Json encode the DB details to be stored as text via AWS Secrets Manager.
-			dat, err := json.Marshal(devEnv.DBConnInfo)
+			dat, err := json.Marshal(deployEnv.DBConnInfo)
 			if err != nil {
 				return errors.Wrap(err, "Failed to marshal db credentials")
 			}
 
 			// Update the current AWS Secret.
-			sm := secretsmanager.New(devEnv.AwsSession())
+			sm := secretsmanager.New(deployEnv.AwsSession())
 			_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
 				SecretId:     aws.String(dbSecretId),
 				SecretString: aws.String(string(dat)),
@@ -882,20 +832,20 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		log.Printf("\t%s\tDB Cluster available\n", Success)
 	}
 
-	// Step 7: Find or create the AWS RDS database Instance.
+	// Step 6: Find or create the AWS RDS database Instance.
 	// Regardless if deployment is using Aurora or not, still need to setup database instance.
 	// If a database instance is defined, then ensure it exists with RDS in else create a new one.
-	if devEnv.AwsRdsDBInstance != nil {
+	if deployEnv.AwsRdsDBInstance != nil {
 		log.Println("\tRDS - Get or Create Database Instance")
 
-		dBInstanceIdentifier := devEnv.AwsRdsDBInstance.DBInstanceIdentifier
+		dBInstanceIdentifier := deployEnv.AwsRdsDBInstance.DBInstanceIdentifier
 
 		// Secret ID used to store the DB username and password across deploys.
-		dbSecretId := devEnv.SecretID(dBInstanceIdentifier)
+		dbSecretId := deployEnv.SecretID(dBInstanceIdentifier)
 
 		// Retrieve the current secret value if something is stored.
 		{
-			sm := secretsmanager.New(devEnv.AwsSession())
+			sm := secretsmanager.New(deployEnv.AwsSession())
 			res, err := sm.GetSecretValue(&secretsmanager.GetSecretValueInput{
 				SecretId: aws.String(dbSecretId),
 			})
@@ -904,7 +854,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					return errors.Wrapf(err, "Failed to get value for secret id %s", dbSecretId)
 				}
 			} else {
-				err = json.Unmarshal([]byte(*res.SecretString), &devEnv.DBConnInfo)
+				err = json.Unmarshal([]byte(*res.SecretString), &deployEnv.DBConnInfo)
 				if err != nil {
 					return errors.Wrap(err, "Failed to json decode db credentials")
 				}
@@ -912,7 +862,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		}
 
 		// Init a new RDS client.
-		svc := rds.New(devEnv.AwsSession())
+		svc := rds.New(deployEnv.AwsSession())
 
 		// Try to find an existing DB instance with the same identifier.
 		descRes, err := svc.DescribeDBInstances(&rds.DescribeDBInstancesInput{
@@ -923,37 +873,37 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				return errors.Wrapf(err, "Failed to describe database instance '%s'", dBInstanceIdentifier)
 			}
 		} else if len(descRes.DBInstances) > 0 {
-			devEnv.AwsRdsDBInstance.result = descRes.DBInstances[0]
+			deployEnv.AwsRdsDBInstance.result = descRes.DBInstances[0]
 		}
 
 		// No DB instance was found, so create a new one.
-		if devEnv.AwsRdsDBInstance.result == nil {
+		if deployEnv.AwsRdsDBInstance.result == nil {
 
-			if devEnv.DBConnInfo != nil && devEnv.DBConnInfo.Pass != "" {
-				devEnv.AwsRdsDBCluster.MasterUserPassword = devEnv.DBConnInfo.User
-				devEnv.AwsRdsDBCluster.MasterUserPassword = devEnv.DBConnInfo.Pass
+			if deployEnv.DBConnInfo != nil && deployEnv.DBConnInfo.Pass != "" {
+				deployEnv.AwsRdsDBCluster.MasterUserPassword = deployEnv.DBConnInfo.User
+				deployEnv.AwsRdsDBCluster.MasterUserPassword = deployEnv.DBConnInfo.Pass
 			}
 
-			if devEnv.AwsRdsDBCluster != nil {
-				devEnv.AwsRdsDBInstance.DBClusterIdentifier = aws.String(devEnv.AwsRdsDBCluster.DBClusterIdentifier)
+			if deployEnv.AwsRdsDBCluster != nil {
+				deployEnv.AwsRdsDBInstance.DBClusterIdentifier = aws.String(deployEnv.AwsRdsDBCluster.DBClusterIdentifier)
 			} else {
 				// Only store the db password for the instance when no cluster is defined.
 				// Store the secret first in the event that create fails.
-				if devEnv.DBConnInfo == nil {
+				if deployEnv.DBConnInfo == nil {
 					// Only set the password right now,
 					// all other configuration details will be set after the database instance is created.
-					devEnv.DBConnInfo = &DBConnInfo{
-						Pass: devEnv.AwsRdsDBCluster.MasterUserPassword,
+					deployEnv.DBConnInfo = &DBConnInfo{
+						Pass: deployEnv.AwsRdsDBCluster.MasterUserPassword,
 					}
 
 					// Json encode the db details to be stored as secret text.
-					dat, err := json.Marshal(devEnv.DBConnInfo)
+					dat, err := json.Marshal(deployEnv.DBConnInfo)
 					if err != nil {
 						return errors.Wrap(err, "Failed to marshal db credentials")
 					}
 
 					// Create the new entry in AWS Secret Manager with the database password.
-					sm := secretsmanager.New(devEnv.AwsSession())
+					sm := secretsmanager.New(deployEnv.AwsSession())
 					_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
 						Name:         aws.String(dbSecretId),
 						SecretString: aws.String(string(dat)),
@@ -965,7 +915,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				}
 			}
 
-			input, err := devEnv.AwsRdsDBInstance.Input([]string{securityGroupId})
+			input, err := deployEnv.AwsRdsDBInstance.Input([]string{securityGroupId})
 			if err != nil {
 				return err
 			}
@@ -975,14 +925,14 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			if err != nil {
 				return errors.Wrapf(err, "Failed to create instance '%s'", dBInstanceIdentifier)
 			}
-			devEnv.AwsRdsDBInstance.result = createRes.DBInstance
+			deployEnv.AwsRdsDBInstance.result = createRes.DBInstance
 
-			log.Printf("\t\tCreated: %s", *devEnv.AwsRdsDBInstance.result.DBInstanceArn)
+			log.Printf("\t\tCreated: %s", *deployEnv.AwsRdsDBInstance.result.DBInstanceArn)
 		} else {
-			log.Printf("\t\tFound: %s", *devEnv.AwsRdsDBInstance.result.DBInstanceArn)
+			log.Printf("\t\tFound: %s", *deployEnv.AwsRdsDBInstance.result.DBInstanceArn)
 		}
 
-		dbInstance := *devEnv.AwsRdsDBInstance.result
+		dbInstance := *deployEnv.AwsRdsDBInstance.result
 
 		// The status of the instance.
 		log.Printf("\t\t\tStatus: %s", *dbInstance.DBInstanceStatus)
@@ -1000,28 +950,28 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		}
 
 		// If a database cluster is not defined, update the database details with the current instance.
-		if devEnv.AwsRdsDBCluster == nil {
+		if deployEnv.AwsRdsDBCluster == nil {
 			// Update the secret with the DB instance details. This happens after DB create to help address when the
 			// DB instance was successfully created, but the secret failed to save. The DB details host should be empty or
 			// match the current instance endpoint.
 			curHost := fmt.Sprintf("%s:%d", *dbInstance.Endpoint.Address, *dbInstance.Endpoint.Port)
-			if curHost != devEnv.DBConnInfo.Host {
+			if curHost != deployEnv.DBConnInfo.Host {
 
 				// Copy the instance details to the DB struct.
-				devEnv.DBConnInfo.Host = curHost
-				devEnv.DBConnInfo.User = *dbInstance.MasterUsername
-				devEnv.DBConnInfo.Database = *dbInstance.DBName
-				devEnv.DBConnInfo.Driver = *dbInstance.Engine
-				devEnv.DBConnInfo.DisableTLS = false
+				deployEnv.DBConnInfo.Host = curHost
+				deployEnv.DBConnInfo.User = *dbInstance.MasterUsername
+				deployEnv.DBConnInfo.Database = *dbInstance.DBName
+				deployEnv.DBConnInfo.Driver = *dbInstance.Engine
+				deployEnv.DBConnInfo.DisableTLS = false
 
 				// Json encode the DB details to be stored as text via AWS Secrets Manager.
-				dat, err := json.Marshal(devEnv.DBConnInfo)
+				dat, err := json.Marshal(deployEnv.DBConnInfo)
 				if err != nil {
 					return errors.Wrap(err, "Failed to marshal db credentials")
 				}
 
 				// Update the current AWS Secret.
-				sm := secretsmanager.New(devEnv.AwsSession())
+				sm := secretsmanager.New(deployEnv.AwsSession())
 				_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
 					SecretId:     aws.String(dbSecretId),
 					SecretString: aws.String(string(dat)),
@@ -1159,7 +1109,7 @@ func exists(path string) (bool, error) {
 	return true, err
 }
 
-// getTargetEnv checks for an env var that is prefixed with the current target env.
+// GetTargetEnv checks for an env var that is prefixed with the current target env.
 func GetTargetEnv(targetEnv, envName string) string {
 	k := fmt.Sprintf("%s_%s", strings.ToUpper(targetEnv), envName)
 

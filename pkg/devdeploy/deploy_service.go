@@ -34,6 +34,56 @@ import (
 	"gopkg.in/go-playground/validator.v9"
 )
 
+// DeployService defines the detailed needed to deploy a service to AWS ECS as a Fargate task.
+type DeployService struct {
+	//DeploymentEnv *DeploymentEnv `validate:"required,dive,required"`
+
+	ServiceName string `validate:"required" example:"web-api"`
+
+	EnableHTTPS        bool     `validate:"omitempty"`
+	ServiceHostPrimary string   `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
+	ServiceHostNames   []string `validate:"omitempty,dive,fqdn"`
+
+	Dockerfile string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+
+	ReleaseTag string `validate:"required"`
+
+	StaticFilesDir             string `validate:"omitempty" example:"./cmd/web-api"`
+	StaticFilesS3Prefix        string `validate:"omitempty"`
+	StaticFilesImgResizeEnable bool   `validate:"omitempty"`
+
+	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
+	AwsEcsCluster *AwsEcsCluster `validate:"required"`
+
+	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
+	AwsEcsService *AwsEcsService `validate:"required"`
+
+	// AwsEcsTaskDefinition defines the task definition.
+	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
+
+	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
+	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
+	AwsEcsExecutionRole *AwsIamRole `validate:"required"`
+
+	// AwsEcsExecutionRole defines the name of the iam task role for ecs task and the detailed needed to create doesn't exist.
+	// This role is used by the task itself for calling other AWS services.
+	AwsEcsTaskRole *AwsIamRole `validate:"required"`
+
+	// AwsEcsTaskPolicy defines the name of the iam policy that will be attached to the task role.
+	AwsEcsTaskPolicy *AwsIamPolicy `validate:"required"`
+
+	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS
+	// task.
+	AwsCloudWatchLogGroup *AwsCloudWatchLogGroup `validate:"required"`
+
+	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
+	AwsElbLoadBalancer *AwsElbLoadBalancer `validate:"omitempty"`
+
+	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
+	// it does not exist.
+	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
+}
+
 // DeployServiceToTargetEnv deploys a service to AWS ECS. The following steps will be executed for deployment:
 // 1. Find AWS Route 53 Zones for service hostnames.
 // 2. Setup service discovery for service.
@@ -47,7 +97,7 @@ import (
 // 10. Wait for AWS ECS service to enter a stable state.
 func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetService *DeployService) error {
 
-	log.Println("Setup Deployment Environment")
+	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, targetEnv.Env)
 
 	r, err := regexp.Compile(`^(\d+)`)
 	if err != nil {

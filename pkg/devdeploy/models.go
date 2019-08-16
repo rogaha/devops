@@ -2,6 +2,7 @@ package devdeploy
 
 import (
 	"encoding/json"
+	"net/url"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
@@ -43,54 +44,29 @@ type DBConnInfo struct {
 	DisableTLS bool
 }
 
-// DeploymentEnv .......
-type DeploymentEnv struct {
-	Env string `validate:"oneof=dev stage prod"`
+// URL returns the URL to connect to a database.
+func (db DBConnInfo) URL() string {
 
-	// ProjectRoot should be the root directory for the project.
-	ProjectRoot string `validate:"required"`
+	// Query parameters.
+	var q url.Values = make(map[string][]string)
 
-	// ProjectName will be used for prefixing AWS resources.
-	ProjectName string `validate:"required"`
+	// Handle SSL Mode
+	if db.DisableTLS {
+		q.Set("sslmode", "disable")
+	} else {
+		q.Set("sslmode", "require")
+	}
 
-	// AwsCredentials defines the credentials used for deployment.
-	AwsCredentials AwsCredentials `validate:"required,dive,required"`
+	// Construct url.
+	dbUrl := url.URL{
+		Scheme:   db.Driver,
+		User:     url.UserPassword(db.User, db.Pass),
+		Host:     db.Host,
+		Path:     db.Database,
+		RawQuery: q.Encode(),
+	}
 
-	// AwsEcrRepository defines the name of the ECR repository and details needed to create if does not exist.
-	AwsEcrRepository *AwsEcrRepository
-
-	// AwsEc2Vpc defines the name of the VPC and details needed to create if does not exist.
-	AwsEc2Vpc *AwsEc2Vpc
-
-	// AwsEc2SecurityGroup defines the name of the EC2 security group and details needed to create if does not exist.
-	AwsEc2SecurityGroup *AwsEc2SecurityGroup
-
-	// GitlabRunnerEc2SecurityGroupName defines the name of the security group that was used to deploy the GitLab
-	// Runners on AWS. This will allow the deploy script to ensure the GitLab Runners have access to community to through
-	// the deployment EC2 Security Group.
-	GitlabRunnerEc2SecurityGroupName string `validate:"required"`
-
-	// AwsS3BucketPrivate sets the S3 bucket used internally for services.
-	AwsS3BucketPrivate *AwsS3Bucket
-
-	// AwsS3BucketPublic sets the S3 bucket used to host static files for all services.
-	AwsS3BucketPublic *AwsS3Bucket
-
-	// AwsS3BucketPublicKeyPrefix defines the base S3 key prefix used to upload static files.
-	AwsS3BucketPublicKeyPrefix string `validate:"omitempty"`
-
-	// AwsElasticCacheCluster defines the name of the cache cluster and the details needed to create if does not exist.
-	AwsElasticCacheCluster *AwsElasticCacheCluster
-
-	// AwsRdsDBCluster defines the name of the rds cluster and the details needed to create if does not exist.
-	// This is only needed for Aurora storage engine.
-	AwsRdsDBCluster *AwsRdsDBCluster
-
-	// AwsRdsDBInstance defines the name of the rds database instance and the detailed needed to create doesn't exist.
-	AwsRdsDBInstance *AwsRdsDBInstance
-
-	// DBConnInfo defines the database connection details.
-	DBConnInfo *DBConnInfo
+	return dbUrl.String()
 }
 
 // Tag describes a key/value pair that will help identify a resource.
@@ -170,7 +146,6 @@ func (m *AwsEcrRepository) Input() (*ecr.CreateRepositoryInput, error) {
 }
 
 // AwsEc2Vpc describes an AWS EC2 VPC.
-// @TODO: Apply tagging resource on create.
 type AwsEc2Vpc struct {
 	// The ID of the VPC. This is optional when IsDefault is set to true which will find the default VPC.
 	VpcId string `type:"string"`
@@ -189,6 +164,9 @@ type AwsEc2Vpc struct {
 
 	// The set of subnets used for creating a custom VPC.
 	Subnets []AwsEc2Subnet
+
+	// A list of cost allocation tags to be added to this resource.
+	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ec2.CreateVpcInput) error
@@ -221,7 +199,6 @@ func (m *AwsEc2Vpc) Input() (*ec2.CreateVpcInput, error) {
 }
 
 // AwsEc2Subnet describes the detailed needed for creating a subnet for a VPC when not using the default region VPC.
-// @TODO: Apply tagging resource on create.
 type AwsEc2Subnet struct {
 	// The IPv4 network range for the subnet, in CIDR notation. For example, 10.0.0.0/24.
 	// CidrBlock is a required field
@@ -238,6 +215,9 @@ type AwsEc2Subnet struct {
 	// The IPv6 network range for the subnet, in CIDR notation. The subnet size
 	// must use a /64 prefix length.
 	Ipv6CidrBlock *string `type:"string"`
+
+	// A list of cost allocation tags to be added to this resource.
+	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ec2.CreateSubnetInput) error
@@ -264,7 +244,6 @@ func (m *AwsEc2Subnet) Input(vpcId string) (*ec2.CreateSubnetInput, error) {
 
 // AwsEc2SecurityGroup describes an AWS ECS security group. This will use the VPC ID defined for the deployment when
 // creating a new security group.
-// @TODO: Apply tagging resource on create.
 type AwsEc2SecurityGroup struct {
 	// The name of the security group.
 	// Constraints: Up to 255 characters in length. Cannot start with sg-.
@@ -278,6 +257,9 @@ type AwsEc2SecurityGroup struct {
 	// Constraints for EC2-VPC: a-z, A-Z, 0-9, spaces, and ._-:/()#,@[]+=&;{}!$*
 	// Description is a required field
 	Description string `type:"string" required:"true"`
+
+	// A list of cost allocation tags to be added to this resource.
+	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ec2.CreateSecurityGroupInput) error
@@ -483,7 +465,7 @@ type AwsElasticCacheCluster struct {
 	SnapshotRetentionLimit *int64 `type:"integer"`
 
 	// A list of cost allocation tags to be added to this resource.
-	Tags []*Tag `type:"list"`
+	Tags []Tag `type:"list"`
 
 	// An array of parameter names and values for the parameter update. You must
 	// supply at least one parameter name and value; subsequent arguments are optional.
@@ -878,56 +860,6 @@ func (m *AwsRdsDBInstance) Input(securityGroupIds []string) (*rds.CreateDBInstan
 	}
 
 	return input, nil
-}
-
-// DeployService .......
-type DeployService struct {
-	DeploymentEnv *DeploymentEnv `validate:"required,dive,required"`
-
-	ServiceName string `validate:"required" example:"web-api"`
-
-	EnableHTTPS        bool     `validate:"omitempty"`
-	ServiceHostPrimary string   `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
-	ServiceHostNames   []string `validate:"omitempty,dive,fqdn"`
-
-	Dockerfile string `validate:"required" example:"./cmd/web-api/Dockerfile"`
-
-	ReleaseTag string `validate:"required"`
-
-	StaticFilesDir             string `validate:"omitempty" example:"./cmd/web-api"`
-	StaticFilesS3Prefix        string `validate:"omitempty"`
-	StaticFilesImgResizeEnable bool   `validate:"omitempty"`
-
-	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
-	AwsEcsCluster *AwsEcsCluster `validate:"required"`
-
-	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
-	AwsEcsService *AwsEcsService `validate:"required"`
-
-	// AwsEcsTaskDefinition defines the task definition.
-	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
-
-	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
-	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
-	AwsEcsExecutionRole *AwsIamRole `validate:"required"`
-
-	// AwsEcsExecutionRole defines the name of the iam task role for ecs task and the detailed needed to create doesn't exist.
-	// This role is used by the task itself for calling other AWS services.
-	AwsEcsTaskRole *AwsIamRole `validate:"required"`
-
-	// AwsEcsTaskPolicy defines the name of the iam policy that will be attached to the task role.
-	AwsEcsTaskPolicy *AwsIamPolicy `validate:"required"`
-
-	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS
-	// task.
-	AwsCloudWatchLogGroup *AwsCloudWatchLogGroup `validate:"required"`
-
-	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
-	AwsElbLoadBalancer *AwsElbLoadBalancer `validate:"omitempty"`
-
-	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
-	// it does not exist.
-	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
 }
 
 // AwsEcsCluster defines the details needed to create an ecs cluster.

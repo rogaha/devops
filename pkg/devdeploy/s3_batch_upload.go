@@ -66,7 +66,7 @@ func (di *DirectoryIterator) Err() error {
 	return errors.WithStack(di.err)
 }
 
-// UploadObject uploads a file
+// UploadObject uploads a file to AWS S3 using the upload manager.
 func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 	f := di.next.f
 
@@ -96,6 +96,7 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 	}
 }
 
+// readFile returns the file body and content type.
 func readFile(f *os.File) ([]byte, string, error) {
 	// Get file size and read the file content into a buffer
 	fileInfo, err := f.Stat()
