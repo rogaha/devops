@@ -9,39 +9,39 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/elasticache"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/cloudfront"
-	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
 
 /*
-				// Register informs the sqlxtrace package of the driver that we will be using in our program.
-				// It uses a default service name, in the below case "postgres.db". To use a custom service
-				// name use RegisterWithServiceName.
-				sqltrace.Register(db.Driver, &pq.Driver{}, sqltrace.WithServiceName("devops:migrate"))
-				masterDb, err := sqlxtrace.Open(db.Driver, db.URL())
-				if err != nil {
-					return errors.WithStack(err)
-				}
-				defer masterDb.Close()
+	// Register informs the sqlxtrace package of the driver that we will be using in our program.
+	// It uses a default service name, in the below case "postgres.db". To use a custom service
+	// name use RegisterWithServiceName.
+	sqltrace.Register(db.Driver, &pq.Driver{}, sqltrace.WithServiceName("devops:migrate"))
+	masterDb, err := sqlxtrace.Open(db.Driver, db.URL())
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	defer masterDb.Close()
 
-				// Start the database migrations.
-				log.Printf("\t\tStart migrations.")
-				if err = schema.Migrate(masterDb, log, false); err != nil {
-					return errors.WithStack(err)
-				}
-				log.Printf("\t\tFinished migrations.")
- */
+	// Start the database migrations.
+	log.Printf("\t\tStart migrations.")
+	if err = schema.Migrate(masterDb, log, false); err != nil {
+		return errors.WithStack(err)
+	}
+	log.Printf("\t\tFinished migrations.")
+*/
 
 // ProjectNameCamel takes a project name and returns the camel cased version.
 func (devEnv *DeploymentEnv) ProjectNameCamel() string {
@@ -71,7 +71,7 @@ func (devEnv *DeploymentEnv) Ec2TagResource(resource, name string, tags ...*ec2.
 	}
 
 	if name != "" {
-		ec2Tags = append(ec2Tags, &ec2.Tag{Key: aws.String(AwsTagNameName), Value: aws.String(name)} )
+		ec2Tags = append(ec2Tags, &ec2.Tag{Key: aws.String(AwsTagNameName), Value: aws.String(name)})
 	}
 
 	if tags != nil {
@@ -211,7 +211,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 
 				// Find all subnets that are default for each availability zone.
 				err := svc.DescribeVpcsPages(&ec2.DescribeVpcsInput{
-					VpcIds: aws.StringSlice([]string{devEnv.AwsEc2Vpc.VpcId }),
+					VpcIds: aws.StringSlice([]string{devEnv.AwsEc2Vpc.VpcId}),
 				}, func(res *ec2.DescribeVpcsOutput, lastPage bool) bool {
 					for _, s := range res.Vpcs {
 						if *s.VpcId == devEnv.AwsEc2Vpc.VpcId {
@@ -222,12 +222,12 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					return !lastPage
 				})
 				if err != nil {
-					return errors.Wrapf(err, "Failed to describe vpc '%s'.", devEnv.AwsEc2Vpc.VpcId )
+					return errors.Wrapf(err, "Failed to describe vpc '%s'.", devEnv.AwsEc2Vpc.VpcId)
 				}
 			}
 
 			// If there is no VPC id set and IsDefault is false, a new VPC needs to be created with the given details.
-			if devEnv.AwsEc2Vpc.result == nil  {
+			if devEnv.AwsEc2Vpc.result == nil {
 
 				input, err := devEnv.AwsEc2Vpc.Input()
 				if err != nil {
@@ -239,13 +239,12 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					return errors.Wrap(err, "Failed to create VPC")
 				}
 				devEnv.AwsEc2Vpc.result = createRes.Vpc
-				devEnv.AwsEc2Vpc.VpcId =  *createRes.Vpc.VpcId
+				devEnv.AwsEc2Vpc.VpcId = *createRes.Vpc.VpcId
 				log.Printf("\t\tCreated VPC %s", devEnv.AwsEc2Vpc.VpcId)
-
 
 				err = devEnv.Ec2TagResource(*createRes.Vpc.VpcId, "")
 				if err != nil {
-					return errors.Wrapf(err, "Failed to tag vpc '%s'.", devEnv.AwsEc2Vpc.VpcId )
+					return errors.Wrapf(err, "Failed to tag vpc '%s'.", devEnv.AwsEc2Vpc.VpcId)
 				}
 
 			} else {
@@ -261,7 +260,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					return !lastPage
 				})
 				if err != nil {
-					return errors.Wrapf(err, "Failed to find subnets for VPC '%s'", devEnv.AwsEc2Vpc.VpcId )
+					return errors.Wrapf(err, "Failed to find subnets for VPC '%s'", devEnv.AwsEc2Vpc.VpcId)
 				}
 			}
 
@@ -341,7 +340,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			}
 		}
 
-		if devEnv.AwsEc2SecurityGroup.result == nil  {
+		if devEnv.AwsEc2SecurityGroup.result == nil {
 			input, err := devEnv.AwsEc2SecurityGroup.Input(devEnv.AwsEc2Vpc.VpcId)
 			if err != nil {
 				return err
@@ -353,9 +352,9 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				return errors.Wrapf(err, "Failed to create security group '%s'", securityGroupName)
 			}
 			devEnv.AwsEc2SecurityGroup.result = &ec2.SecurityGroup{
-				GroupId: createRes.GroupId,
+				GroupId:   createRes.GroupId,
 				GroupName: input.GroupName,
-				VpcId: input.VpcId,
+				VpcId:     input.VpcId,
 			}
 
 			log.Printf("\t\tCreated: %s", securityGroupName)
@@ -391,12 +390,12 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		if devEnv.AwsRdsDBCluster != nil || devEnv.AwsRdsDBInstance != nil {
 			// The gitlab runner security group is required when a db instance is defined.
 			if runnerSgId == "" {
-				return errors.Errorf("Failed to find security group '%s'", devEnv.GitlabRunnerEc2SecurityGroupName )
+				return errors.Errorf("Failed to find security group '%s'", devEnv.GitlabRunnerEc2SecurityGroupName)
 			}
 
 			// Enable GitLab runner to communicate with deployment created services.
 			ingressInputs = append(ingressInputs, &ec2.AuthorizeSecurityGroupIngressInput{
-				SourceSecurityGroupName: aws.String(devEnv.GitlabRunnerEc2SecurityGroupName ),
+				SourceSecurityGroupName: aws.String(devEnv.GitlabRunnerEc2SecurityGroupName),
 				GroupId:                 aws.String(securityGroupId),
 			})
 		}
@@ -526,7 +525,6 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				log.Println("\t\t\t\tUpdated bucket policy")
 			}
 
-
 			if s3Bucket.CloudFront != nil {
 				log.Println("\t\t\t\tSetup Cloudfront Distribution")
 
@@ -588,7 +586,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				} else {
 
 					// If no bucket found during create, create new one.
-					log.Printf("\t\t\t\t\tCreated: %s.",targetOriginId)
+					log.Printf("\t\t\t\t\tCreated: %s.", targetOriginId)
 				}
 			}
 		}
@@ -646,7 +644,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		if *cacheCluster.CacheClusterStatus != "available" {
 			log.Printf("\t\tWhat for cluster to become available.")
 			err = svc.WaitUntilCacheClusterAvailable(&elasticache.DescribeCacheClustersInput{
-				CacheClusterId: aws.String(cacheClusterId) ,
+				CacheClusterId: aws.String(cacheClusterId),
 			})
 			if err != nil {
 				return errors.Wrapf(err, "Failed to wait for cache cluster '%s' to enter available state", cacheClusterId)
@@ -663,7 +661,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			},
 		})
 		if err != nil {
-			return errors.Wrapf(err, "Failed to tag cache cluster '%s'",  cacheClusterId)
+			return errors.Wrapf(err, "Failed to tag cache cluster '%s'", cacheClusterId)
 		}
 
 		// If there are custom cache group parameters set, then create a new group and keep them modified.
@@ -808,7 +806,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 				}
 
 				// Json encode the db details to be stored as secret text.
-				dat, err := json.Marshal(devEnv.DBConnInfo )
+				dat, err := json.Marshal(devEnv.DBConnInfo)
 				if err != nil {
 					return errors.Wrap(err, "Failed to marshal db credentials")
 				}
@@ -898,7 +896,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 		// Retrieve the current secret value if something is stored.
 		{
 			sm := secretsmanager.New(devEnv.AwsSession())
-			res, err :=  sm.GetSecretValue(&secretsmanager.GetSecretValueInput{
+			res, err := sm.GetSecretValue(&secretsmanager.GetSecretValueInput{
 				SecretId: aws.String(dbSecretId),
 			})
 			if err != nil {
@@ -949,7 +947,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 					}
 
 					// Json encode the db details to be stored as secret text.
-					dat, err := json.Marshal(devEnv.DBConnInfo )
+					dat, err := json.Marshal(devEnv.DBConnInfo)
 					if err != nil {
 						return errors.Wrap(err, "Failed to marshal db credentials")
 					}
@@ -998,7 +996,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 			if err != nil {
 				return errors.Wrapf(err, "Failed to wait for database instance '%s' to enter available state", dBInstanceIdentifier)
 			}
-			dbInstance.DBInstanceStatus = aws.String( "available")
+			dbInstance.DBInstanceStatus = aws.String("available")
 		}
 
 		// If a database cluster is not defined, update the database details with the current instance.
@@ -1048,7 +1046,7 @@ func SetupDeploymentEnv(log *log.Logger, devEnv *DeploymentEnv) error {
 func LoadModuleDetails(workDir string) (ModuleDetails, error) {
 	var (
 		resp ModuleDetails
-		err error
+		err  error
 	)
 
 	resp.GoModFile, err = findProjectGoModFile(workDir)

@@ -3,29 +3,29 @@ package devdeploy
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/service/ecs"
-	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecr"
+	"github.com/aws/aws-sdk-go/service/ecs"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
 
 const (
 	AwsRegistryMaximumImages = 1000
-	AwsTagNameProject           = "Project"
-	AwsTagNameEnv               = "env"
-	AwsTagNameName              = "Name"
+	AwsTagNameProject        = "Project"
+	AwsTagNameEnv            = "env"
+	AwsTagNameName           = "Name"
 )
 
 // Session returns a new AWS Session used to access AWS services.
@@ -108,7 +108,7 @@ func GetAwsSecretValue(creds AwsCredentials, secretId string) (string, error) {
 func SyncPublicS3Files(awsSession *session.Session, staticS3Bucket, staticS3Prefix, staticDir string) error {
 	uploader := s3manager.NewUploader(awsSession)
 
-	di, err  := NewDirectoryIterator(staticS3Bucket, staticS3Prefix, staticDir, "public-read")
+	di, err := NewDirectoryIterator(staticS3Bucket, staticS3Prefix, staticDir, "public-read")
 	if err != nil {
 		return err
 	}

@@ -7,8 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -23,10 +21,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/acm"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/route53"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/servicediscovery"
 	"github.com/bobesa/go-domain-util/domainutil"
 	"github.com/pkg/errors"
@@ -50,7 +51,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 	r, err := regexp.Compile(`^(\d+)`)
 	if err != nil {
-		return  errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
 	// Workaround for domains that start with a numeric value like 8north.com
@@ -66,7 +67,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	log.Println("\tValidate request.")
 	errs := validator.New().Struct(targetService)
 	if errs != nil {
-		return  errs
+		return errs
 	}
 
 	targetService.ServiceHostPrimary = origServiceHostPrimary
@@ -400,7 +401,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			log.Printf("\t\tCreated: %s", logGroupName)
 		}
 
-		log.Printf("\t%s\tLog Group setup\n", Success,)
+		log.Printf("\t%s\tLog Group setup\n", Success)
 	}
 
 	// Step 4: If an Elastic Load Balancer is enabled, then ensure one exists else create one.
@@ -605,7 +606,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				// If no repository was found, create one.
 				createRes, err := svc.CreateLoadBalancer(input)
 				if err != nil {
-					return errors.Wrapf(err, "Failed to create load balancer '%s'",loadBalancerName)
+					return errors.Wrapf(err, "Failed to create load balancer '%s'", loadBalancerName)
 				}
 				elb = createRes.LoadBalancers[0]
 
@@ -639,7 +640,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				LoadBalancerArn: aws.String(*elb.LoadBalancerArn),
 			}, func(res *elbv2.DescribeTargetGroupsOutput, lastPage bool) bool {
 				for _, tg := range res.TargetGroups {
-					if *tg.TargetGroupName == targetGroupName{
+					if *tg.TargetGroupName == targetGroupName {
 						targetGroup = tg
 						return false
 					}
@@ -670,7 +671,6 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				log.Printf("\t\tHas target group: %s.", *targetGroup.TargetGroupArn)
 			}
 			targetService.AwsElbLoadBalancer.TargetGroup.result = targetGroup
-
 
 			if targetService.AwsElbLoadBalancer.EcsTaskDeregistrationDelay > 0 {
 				// If no target group was found, create one.
@@ -826,6 +826,30 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			}
 
 			log.Printf("\t%s\tLoad balancer configured.\n", Success)
+		}
+	} else {
+
+		// When not using an Elastic Load Balancer, services need to support direct access via HTTPS.
+		// HTTPS is terminated via the web server and not on the Load Balancer.
+		if targetService.EnableHTTPS {
+			log.Println("\tEC2 - Enable HTTPS port 443 for security group.")
+
+			svc := ec2.New(targetEnv.AwsSession())
+
+			// Enable services to be publicly available via HTTPS port 443.
+			_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
+				IpProtocol: aws.String("tcp"),
+				CidrIp:     aws.String("0.0.0.0/0"),
+				FromPort:   aws.Int64(443),
+				ToPort:     aws.Int64(443),
+				GroupId:    targetEnv.AwsEc2SecurityGroup.result.GroupId,
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
+					return errors.Wrapf(err, "Failed to add ingress for security group '%s'",
+						targetEnv.AwsEc2SecurityGroup.GroupName)
+				}
+			}
 		}
 	}
 
@@ -1118,11 +1142,11 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 		// If a task definition value is empty, populate it with the default value.
 		if taskDefInput.Family == nil || *taskDefInput.Family == "" {
-			taskDefInput.Family = aws.String( targetService.ServiceName)
+			taskDefInput.Family = aws.String(targetService.ServiceName)
 		}
 		if len(taskDefInput.ContainerDefinitions) > 0 {
 			if taskDefInput.ContainerDefinitions[0].Name == nil || *taskDefInput.ContainerDefinitions[0].Name == "" {
-				taskDefInput.ContainerDefinitions[0].Name = aws.String( targetService.ServiceName)
+				taskDefInput.ContainerDefinitions[0].Name = aws.String(targetService.ServiceName)
 			}
 			if taskDefInput.ContainerDefinitions[0].Image == nil || *taskDefInput.ContainerDefinitions[0].Image == "" {
 				taskDefInput.ContainerDefinitions[0].Image = aws.String(releaseImage)
@@ -1606,7 +1630,6 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				// Needs to delete any associated services on ECS first before it can be recreated.
 				log.Println("ECS - Delete Service")
 
-
 				// The service cannot be stopped while it is scaled above 0.
 				if ecsService.DesiredCount != nil && *ecsService.DesiredCount > 0 {
 					log.Println("\t\tScaling service down to zero.")
@@ -1622,7 +1645,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 					// It may take some time for the service to scale down, so need to wait.
 					log.Println("\t\tWait for the service to scale down.")
 					err = svc.WaitUntilServicesStable(&ecs.DescribeServicesInput{
-						Cluster:   targetService.AwsEcsCluster.result.ClusterArn,
+						Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
 						Services: aws.StringSlice([]string{*ecsService.ServiceArn}),
 					})
 					if err != nil {
@@ -1648,7 +1671,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 				log.Println("\t\tWait for the service to be deleted.")
 				err = svc.WaitUntilServicesInactive(&ecs.DescribeServicesInput{
-					Cluster:   targetService.AwsEcsCluster.result.ClusterArn,
+					Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
 					Services: aws.StringSlice([]string{*ecsService.ServiceArn}),
 				})
 				if err != nil {
@@ -1662,7 +1685,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			}
 		}
 
-		targetService.AwsEcsService.result =  ecsService
+		targetService.AwsEcsService.result = ecsService
 	}
 
 	// Step 8: If the service exists on ECS, update the service, else create a new service.
@@ -1715,7 +1738,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	targetService.AwsEcsService.result = ecsService
 
 	// Step 9: When static files are enabled to be to stored on S3, we need to upload all of them.
-	if targetService.StaticFilesDir != "" &&  targetService.StaticFilesS3Prefix != "" {
+	if targetService.StaticFilesDir != "" && targetService.StaticFilesS3Prefix != "" {
 		log.Println("\tUpload static files to public S3 bucket")
 
 		staticDir := targetService.StaticFilesDir
@@ -1740,36 +1763,39 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			targetService.StaticFilesS3Prefix)
 	}
 
-
-
-
-
 	// Step 10: Wait for the updated or created service to enter a stable state.
 	{
 		log.Println("\tWaiting for service to enter stable state.")
 
 		// Helper method to get the logs from cloudwatch for a specific task ID.
 		getTaskLogs := func(taskId string) ([]string, error) {
-			if req.S3BucketPrivateName == "" {
+			if targetEnv.AwsS3BucketPrivate == nil || targetEnv.AwsS3BucketPrivate.BucketName == "" ||
+				targetService.AwsCloudWatchLogGroup == nil || targetService.AwsCloudWatchLogGroup.LogGroupName == "" {
 				// No private S3 bucket defined so unable to export logs streams.
 				return []string{}, nil
 			}
+
+			privateBucket := targetEnv.AwsS3BucketPrivate
+			logGroupName := targetService.AwsCloudWatchLogGroup.LogGroupName
 
 			// Stream name generated by ECS for the awslogs driver.
 			logStreamName := fmt.Sprintf("ecs/%s/%s", *ecsService.ServiceName, taskId)
 
 			// Define S3 key prefix used to export the stream logs to.
-			s3KeyPrefix := filepath.Join(req.S3BucketTempPrefix, "logs/cloudwatchlogs/exports", req.CloudWatchLogGroupName)
+			s3KeyPrefix := filepath.Join(
+				privateBucket.TempPrefix,
+				"logs/cloudwatchlogs/exports",
+				logGroupName)
 
 			var downloadPrefix string
 			{
-				svc := cloudwatchlogs.New(req.awsSession())
+				svc := cloudwatchlogs.New(targetEnv.AwsSession())
 
 				createRes, err := svc.CreateExportTask(&cloudwatchlogs.CreateExportTaskInput{
-					LogGroupName:        aws.String(req.CloudWatchLogGroupName),
+					LogGroupName:        aws.String(logGroupName),
 					LogStreamNamePrefix: aws.String(logStreamName),
 					//TaskName: aws.String(taskId),
-					Destination:       aws.String(req.S3BucketPrivateName),
+					Destination:       aws.String(privateBucket.BucketName),
 					DestinationPrefix: aws.String(s3KeyPrefix),
 					From:              aws.Int64(startTime.UTC().AddDate(0, 0, -1).UnixNano() / int64(time.Millisecond)),
 					To:                aws.Int64(time.Now().UTC().AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)),
@@ -1801,11 +1827,11 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			// If downloadPrefix is set, then get logs from corresponding file for service.
 			var logLines []string
 			if downloadPrefix != "" {
-				svc := s3.New(req.awsSession())
+				svc := s3.New(targetEnv.AwsSession())
 
 				var s3Keys []string
 				err := svc.ListObjectsPages(&s3.ListObjectsInput{
-					Bucket: aws.String(req.S3BucketPrivateName),
+					Bucket: aws.String(privateBucket.BucketName),
 					Prefix: aws.String(downloadPrefix),
 				},
 					func(res *s3.ListObjectsOutput, lastPage bool) bool {
@@ -1815,23 +1841,23 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 						return !lastPage
 					})
 				if err != nil {
-					return []string{}, errors.Wrapf(err, "Failed to list objects from s3 bucket '%s' with prefix '%s'", req.S3BucketPrivateName, downloadPrefix)
+					return []string{}, errors.Wrapf(err, "Failed to list objects from s3 bucket '%s' with prefix '%s'", privateBucket.BucketName, downloadPrefix)
 				}
 
 				// Iterate trough S3 keys and get logs from file.
 				for _, s3Key := range s3Keys {
 					res, err := svc.GetObject(&s3.GetObjectInput{
-						Bucket: aws.String(req.S3BucketPrivateName),
+						Bucket: aws.String(privateBucket.BucketName),
 						Key:    aws.String(s3Key),
 					})
 					if err != nil {
-						return []string{}, errors.Wrapf(err, "Failed to get object '%s' from s3 bucket", s3Key, req.S3BucketPrivateName)
+						return []string{}, errors.Wrapf(err, "Failed to get s3 object 's3://%s%s'", privateBucket.BucketName, s3Key)
 					}
 					r, _ := gzip.NewReader(res.Body)
 					dat, err := ioutil.ReadAll(r)
 					res.Body.Close()
 					if err != nil {
-						return []string{}, errors.Wrapf(err, "failed to read object '%s' from s3 bucket", s3Key, req.S3BucketPrivateName)
+						return []string{}, errors.Wrapf(err, "Failed to read s3 object 's3://%s%s'", privateBucket.BucketName, s3Key)
 					}
 
 					// Iterate through file by line break and add each line to array of logs.
@@ -1851,15 +1877,21 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		// Helper method to display tasks errors that failed to start while we wait for the service to stable state.
 		taskLogLines := make(map[string][]string)
 		checkTasks := func() (bool, error) {
-			svc := ecs.New(req.awsSession())
+			svc := ecs.New(targetEnv.AwsSession())
+
+			clusterName := targetService.AwsEcsCluster.ClusterName
+			serviceName := targetService.AwsEcsService.ServiceName
 
 			serviceTaskRes, err := svc.ListTasks(&ecs.ListTasksInput{
-				Cluster:       aws.String(req.EcsClusterName),
-				ServiceName:   aws.String(req.EcsServiceName),
+				Cluster:       aws.String(clusterName),
+				ServiceName:   aws.String(serviceName),
 				DesiredStatus: aws.String("STOPPED"),
 			})
 			if err != nil {
-				return false, errors.Wrapf(err, "Failed to list tasks for cluster '%s' service '%s'", req.EcsClusterName, req.EcsServiceName)
+				return false, errors.Wrapf(err,
+					"Failed to list tasks for cluster '%s' service '%s'",
+					clusterName,
+					serviceName)
 			}
 
 			if len(serviceTaskRes.TaskArns) == 0 {
@@ -1867,11 +1899,11 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			}
 
 			taskRes, err := svc.DescribeTasks(&ecs.DescribeTasksInput{
-				Cluster: aws.String(req.EcsClusterName),
+				Cluster: aws.String(clusterName),
 				Tasks:   serviceTaskRes.TaskArns,
 			})
 			if err != nil {
-				return false, errors.Wrapf(err, "Failed to describe %d tasks for cluster '%s'", len(serviceTaskRes.TaskArns), req.EcsClusterName)
+				return false, errors.Wrapf(err, "Failed to describe %d tasks for cluster '%s'", len(serviceTaskRes.TaskArns), clusterName)
 			}
 
 			var failures []*ecs.Failure
@@ -1900,7 +1932,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				if !ok {
 					logLines, err = getTaskLogs(taskId)
 					if err != nil {
-						return false, errors.Wrapf(err, "Failed to get logs for task %s for cluster '%s'", *t.TaskArn, req.EcsClusterName)
+						return false, errors.Wrapf(err, "Failed to get logs for task %s for cluster '%s'", *t.TaskArn, clusterName)
 					}
 					taskLogLines[taskId] = logLines
 				}
@@ -1913,11 +1945,11 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				}
 
 				if t.StopCode != nil && t.StoppedReason != nil {
-					log.Printf("\t%s\tTask %s stopped with %s - %s.\n", tests.Failed, *t.TaskArn, *t.StopCode, *t.StoppedReason)
+					log.Printf("\t%s\tTask %s stopped with %s - %s.\n", Failed, *t.TaskArn, *t.StopCode, *t.StoppedReason)
 				} else if t.StopCode != nil {
-					log.Printf("\t%s\tTask %s stopped with %s.\n", tests.Failed, *t.TaskArn, *t.StopCode)
+					log.Printf("\t%s\tTask %s stopped with %s.\n", Failed, *t.TaskArn, *t.StopCode)
 				} else {
-					log.Printf("\t%s\tTask %s stopped.\n", tests.Failed, *t.TaskArn)
+					log.Printf("\t%s\tTask %s stopped.\n", Failed, *t.TaskArn)
 				}
 
 				// Limit failures to only the current task definition.
@@ -1930,7 +1962,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 			if len(failures) > 0 {
 				for _, t := range failures {
-					log.Printf("\t%s\tTask %s failed with %s.\n", tests.Failed, *t.Arn, *t.Reason)
+					log.Printf("\t%s\tTask %s failed with %s.\n", Failed, *t.Arn, *t.Reason)
 				}
 			}
 
@@ -1954,7 +1986,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				case <-ticker.C:
 					stop, err := checkTasks()
 					if err != nil {
-						log.Printf("\t%s\tFailed to check tasks.\n%+v\n", tests.Failed, err)
+						log.Printf("\t%s\tFailed to check tasks.\n%+v\n", Failed, err)
 					}
 
 					if stop {
@@ -1967,9 +1999,9 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 		// Use the AWS ECS method to check for the service to be stable.
 		go func() {
-			svc := ecs.New(req.awsSession())
+			svc := ecs.New(targetEnv.AwsSession())
 			err := svc.WaitUntilServicesStable(&ecs.DescribeServicesInput{
-				Cluster:  ecsCluster.ClusterArn,
+				Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
 				Services: aws.StringSlice([]string{*ecsService.ServiceArn}),
 			})
 			if err != nil {
@@ -1981,16 +2013,15 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		}()
 
 		if err := <-checkErr; err != nil {
-			log.Printf("\t%s\tFailed to check tasks.\n%+v\n", tests.Failed, err)
+			log.Printf("\t%s\tFailed to check tasks.\n%+v\n", Failed, err)
 			return err
 		}
 
 		// Wait for one of the methods to finish and then ensure the ticker is stopped.
 		ticker.Stop()
 
-		log.Printf("\t%s\tService running.\n", tests.Success)
+		log.Printf("\t%s\tService running.\n", Success)
 	}
-
 
 	return nil
 }
@@ -2020,43 +2051,3 @@ func FindServiceDockerFile(projectRoot, targetService string) (string, error) {
 
 	return dockerFile, nil
 }
-
-
-
-
-
-/*
-
-
-
-
-
-
-
-
-	// When not using an Elastic Load Balancer, services need to support direct access via HTTPS.
-		// HTTPS is terminated via the web server and not on the Load Balancer.
-		if req.EnableHTTPS {
-			// Enable services to be publicly available via HTTPS port 443.
-			ingressInputs = append(ingressInputs, &ec2.AuthorizeSecurityGroupIngressInput{
-				IpProtocol: aws.String("tcp"),
-				CidrIp:     aws.String("0.0.0.0/0"),
-				FromPort:   aws.Int64(443),
-				ToPort:     aws.Int64(443),
-				GroupId:    aws.String(securityGroupId),
-			})
-		}
-
-
-		// Add all the default ingress to the security group.
-		for _, ingressInput := range ingressInputs {
-			_, err = svc.AuthorizeSecurityGroupIngress(ingressInput)
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
-					return errors.Wrapf(err, "Failed to add ingress for security group '%s'", req.Ec2SecurityGroupName)
-				}
-			}
-		}
-
-
- */

@@ -45,7 +45,7 @@ type DBConnInfo struct {
 
 // DeploymentEnv .......
 type DeploymentEnv struct {
-	Env         string `validate:"oneof=dev stage prod"`
+	Env string `validate:"oneof=dev stage prod"`
 
 	// ProjectRoot should be the root directory for the project.
 	ProjectRoot string `validate:"required"`
@@ -57,13 +57,13 @@ type DeploymentEnv struct {
 	AwsCredentials AwsCredentials `validate:"required,dive,required"`
 
 	// AwsEcrRepository defines the name of the ECR repository and details needed to create if does not exist.
-	AwsEcrRepository  *AwsEcrRepository
+	AwsEcrRepository *AwsEcrRepository
 
 	// AwsEc2Vpc defines the name of the VPC and details needed to create if does not exist.
 	AwsEc2Vpc *AwsEc2Vpc
 
 	// AwsEc2SecurityGroup defines the name of the EC2 security group and details needed to create if does not exist.
-	AwsEc2SecurityGroup      *AwsEc2SecurityGroup
+	AwsEc2SecurityGroup *AwsEc2SecurityGroup
 
 	// GitlabRunnerEc2SecurityGroupName defines the name of the security group that was used to deploy the GitLab
 	// Runners on AWS. This will allow the deploy script to ensure the GitLab Runners have access to community to through
@@ -71,10 +71,10 @@ type DeploymentEnv struct {
 	GitlabRunnerEc2SecurityGroupName string `validate:"required"`
 
 	// AwsS3BucketPrivate sets the S3 bucket used internally for services.
-	AwsS3BucketPrivate     *AwsS3Bucket
+	AwsS3BucketPrivate *AwsS3Bucket
 
 	// AwsS3BucketPublic sets the S3 bucket used to host static files for all services.
-	AwsS3BucketPublic   *AwsS3Bucket
+	AwsS3BucketPublic *AwsS3Bucket
 
 	// AwsS3BucketPublicKeyPrefix defines the base S3 key prefix used to upload static files.
 	AwsS3BucketPublicKeyPrefix string `validate:"omitempty"`
@@ -149,13 +149,13 @@ type AwsEcrRepository struct {
 func (m *AwsEcrRepository) Input() (*ecr.CreateRepositoryInput, error) {
 
 	input := &ecr.CreateRepositoryInput{
-		RepositoryName: aws.String(m.RepositoryName),
+		RepositoryName:     aws.String(m.RepositoryName),
 		ImageTagMutability: m.ImageTagMutability,
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &ecr.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -194,7 +194,7 @@ type AwsEc2Vpc struct {
 	PreCreate func(input *ec2.CreateVpcInput) error
 
 	// result is an unexported field that contains VPC details.
-	result *ec2.Vpc
+	result    *ec2.Vpc
 	subnetIds []string
 }
 
@@ -246,11 +246,11 @@ type AwsEc2Subnet struct {
 // Input returns the AWS input for ec2.CreateSubnet.
 func (m *AwsEc2Subnet) Input(vpcId string) (*ec2.CreateSubnetInput, error) {
 	input := &ec2.CreateSubnetInput{
-		CidrBlock: aws.String(m.CidrBlock),
-		AvailabilityZone: m.AvailabilityZone,
+		CidrBlock:          aws.String(m.CidrBlock),
+		AvailabilityZone:   m.AvailabilityZone,
 		AvailabilityZoneId: m.AvailabilityZoneId,
-		Ipv6CidrBlock: m.Ipv6CidrBlock,
-		VpcId: aws.String(vpcId),
+		Ipv6CidrBlock:      m.Ipv6CidrBlock,
+		VpcId:              aws.String(vpcId),
 	}
 
 	if m.PreCreate != nil {
@@ -289,9 +289,9 @@ type AwsEc2SecurityGroup struct {
 // Input returns the AWS input for ec2.CreateSecurityGroup.
 func (m *AwsEc2SecurityGroup) Input(vpcId string) (*ec2.CreateSecurityGroupInput, error) {
 	input := &ec2.CreateSecurityGroupInput{
-		GroupName: aws.String(m.GroupName),
+		GroupName:   aws.String(m.GroupName),
 		Description: aws.String(m.Description),
-		VpcId: aws.String(vpcId),
+		VpcId:       aws.String(vpcId),
 	}
 
 	if m.PreCreate != nil {
@@ -306,7 +306,7 @@ func (m *AwsEc2SecurityGroup) Input(vpcId string) (*ec2.CreateSecurityGroupInput
 // AwsS3Bucket defines the details needed to create a bucket that includes additional configuration.
 type AwsS3Bucket struct {
 	// BucketName is a required field
-	BucketName              string `validate:"omitempty"`
+	BucketName string `validate:"omitempty"`
 
 	// TempPrefix used by services for short term storage. If not empty, a lifecycle policy must be applied for the prefix.
 	TempPrefix string
@@ -319,16 +319,16 @@ type AwsS3Bucket struct {
 	LocationConstraint *string `type:"string" enum:"BucketLocationConstraint"`
 
 	// A set of lifecycle rules for individual objects in an Amazon S3 bucket.
-	LifecycleRules    []*s3.LifecycleRule
+	LifecycleRules []*s3.LifecycleRule
 
 	// A set of allowed origins and methods.
-	CORSRules         []*s3.CORSRule
+	CORSRules []*s3.CORSRule
 
 	// The PublicAccessBlock configuration currently in effect for this Amazon S3 bucket.
 	PublicAccessBlock *s3.PublicAccessBlockConfiguration
 
 	// The bucket policy as a JSON document.
-	Policy            string
+	Policy string
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *s3.CreateBucketInput) error
@@ -501,22 +501,22 @@ type AwsElasticCacheCluster struct {
 func (m *AwsElasticCacheCluster) Input(securityGroupIds []string) (*elasticache.CreateCacheClusterInput, error) {
 
 	input := &elasticache.CreateCacheClusterInput{
-		CacheClusterId: aws.String(m.CacheClusterId),
-		CacheNodeType: aws.String(m.CacheNodeType),
-		NumCacheNodes: aws.Int64(m.NumCacheNodes),
+		CacheClusterId:          aws.String(m.CacheClusterId),
+		CacheNodeType:           aws.String(m.CacheNodeType),
+		NumCacheNodes:           aws.Int64(m.NumCacheNodes),
 		CacheParameterGroupName: aws.String(m.CacheParameterGroupName),
-		CacheSubnetGroupName: aws.String(m.CacheSubnetGroupName),
-		Engine: aws.String(m.Engine),
-		EngineVersion: aws.String(m.EngineVersion),
-		Port: aws.Int64(m.Port),
+		CacheSubnetGroupName:    aws.String(m.CacheSubnetGroupName),
+		Engine:                  aws.String(m.Engine),
+		EngineVersion:           aws.String(m.EngineVersion),
+		Port:                    aws.Int64(m.Port),
 		AutoMinorVersionUpgrade: m.AutoMinorVersionUpgrade,
-		SecurityGroupIds: aws.StringSlice(securityGroupIds),
-		SnapshotRetentionLimit: m.SnapshotRetentionLimit,
+		SecurityGroupIds:        aws.StringSlice(securityGroupIds),
+		SnapshotRetentionLimit:  m.SnapshotRetentionLimit,
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &elasticache.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -544,12 +544,12 @@ func (m *AwsElasticCacheCluster) CacheParameterGroupInput(CacheParameterGroupNam
 
 	input := &elasticache.ModifyCacheParameterGroupInput{
 		CacheParameterGroupName: aws.String(CacheParameterGroupName),
-		ParameterNameValues: []*elasticache.ParameterNameValue{},
+		ParameterNameValues:     []*elasticache.ParameterNameValue{},
 	}
 
 	for _, p := range m.ParameterNameValues {
 		input.ParameterNameValues = append(input.ParameterNameValues, &elasticache.ParameterNameValue{
-			ParameterName: aws.String(p.ParameterName),
+			ParameterName:  aws.String(p.ParameterName),
 			ParameterValue: aws.String(p.ParameterValue),
 		})
 	}
@@ -642,21 +642,21 @@ func (m *AwsRdsDBCluster) Input(securityGroupIds []string) (*rds.CreateDBCluster
 		EngineMode:            aws.String(m.EngineMode),
 		Port:                  aws.Int64(m.Port),
 		MasterUsername:        aws.String(m.MasterUsername),
-		MasterUserPassword:        aws.String(m.MasterUserPassword),
+		MasterUserPassword:    aws.String(m.MasterUserPassword),
 		BackupRetentionPeriod: m.BackupRetentionPeriod,
-		CharacterSetName: m.CharacterSetName,
-		CopyTagsToSnapshot: m.CopyTagsToSnapshot,
-		VpcSecurityGroupIds: aws.StringSlice(securityGroupIds),
+		CharacterSetName:      m.CharacterSetName,
+		CopyTagsToSnapshot:    m.CopyTagsToSnapshot,
+		VpcSecurityGroupIds:   aws.StringSlice(securityGroupIds),
 	}
 
 	// The the password to a random value, it can be manually overwritten with the PreCreate method.
 	if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
-		input.MasterUserPassword = aws.String( uuid.NewRandom().String())
+		input.MasterUserPassword = aws.String(uuid.NewRandom().String())
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &rds.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -842,31 +842,31 @@ type AwsRdsDBInstance struct {
 func (m *AwsRdsDBInstance) Input(securityGroupIds []string) (*rds.CreateDBInstanceInput, error) {
 
 	input := &rds.CreateDBInstanceInput{
-		DBInstanceIdentifier: aws.String( m.DBInstanceIdentifier),
-		DBName: aws.String( m.DBName),
-		Engine: aws.String( m.Engine),
-		MasterUsername: aws.String( m.MasterUsername),
-		MasterUserPassword:        aws.String(m.MasterUserPassword),
-		Port: aws.Int64( m.Port),
-		DBInstanceClass: aws.String( m.DBInstanceClass),
-		AllocatedStorage: aws.Int64( m.AllocatedStorage),
-		PubliclyAccessible: aws.Bool( m.PubliclyAccessible),
-		AutoMinorVersionUpgrade: aws.Bool( m.AutoMinorVersionUpgrade),
-		BackupRetentionPeriod: m.BackupRetentionPeriod,
-		CharacterSetName:  m.CharacterSetName,
-		CopyTagsToSnapshot: m.CopyTagsToSnapshot,
-		DBClusterIdentifier: m.DBClusterIdentifier,
-		VpcSecurityGroupIds: aws.StringSlice(securityGroupIds),
+		DBInstanceIdentifier:    aws.String(m.DBInstanceIdentifier),
+		DBName:                  aws.String(m.DBName),
+		Engine:                  aws.String(m.Engine),
+		MasterUsername:          aws.String(m.MasterUsername),
+		MasterUserPassword:      aws.String(m.MasterUserPassword),
+		Port:                    aws.Int64(m.Port),
+		DBInstanceClass:         aws.String(m.DBInstanceClass),
+		AllocatedStorage:        aws.Int64(m.AllocatedStorage),
+		PubliclyAccessible:      aws.Bool(m.PubliclyAccessible),
+		AutoMinorVersionUpgrade: aws.Bool(m.AutoMinorVersionUpgrade),
+		BackupRetentionPeriod:   m.BackupRetentionPeriod,
+		CharacterSetName:        m.CharacterSetName,
+		CopyTagsToSnapshot:      m.CopyTagsToSnapshot,
+		DBClusterIdentifier:     m.DBClusterIdentifier,
+		VpcSecurityGroupIds:     aws.StringSlice(securityGroupIds),
 	}
 
 	// The the password to a random value, it can be manually overwritten with the PreCreate method.
 	if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
-		input.MasterUserPassword = aws.String( uuid.NewRandom().String())
+		input.MasterUserPassword = aws.String(uuid.NewRandom().String())
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &rds.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -882,7 +882,7 @@ func (m *AwsRdsDBInstance) Input(securityGroupIds []string) (*rds.CreateDBInstan
 
 // DeployService .......
 type DeployService struct {
-	DeploymentEnv  *DeploymentEnv `validate:"required,dive,required"`
+	DeploymentEnv *DeploymentEnv `validate:"required,dive,required"`
 
 	ServiceName string `validate:"required" example:"web-api"`
 
@@ -890,13 +890,13 @@ type DeployService struct {
 	ServiceHostPrimary string   `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
 	ServiceHostNames   []string `validate:"omitempty,dive,fqdn"`
 
-	Dockerfile      string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+	Dockerfile string `validate:"required" example:"./cmd/web-api/Dockerfile"`
 
-	ReleaseTag  string `validate:"required"`
+	ReleaseTag string `validate:"required"`
 
-	StaticFilesDir      string `validate:"omitempty" example:"./cmd/web-api"`
-	StaticFilesS3Prefix string  `validate:"omitempty"`
-	StaticFilesImgResizeEnable bool  `validate:"omitempty"`
+	StaticFilesDir             string `validate:"omitempty" example:"./cmd/web-api"`
+	StaticFilesS3Prefix        string `validate:"omitempty"`
+	StaticFilesImgResizeEnable bool   `validate:"omitempty"`
 
 	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
@@ -905,7 +905,7 @@ type DeployService struct {
 	AwsEcsService *AwsEcsService `validate:"required"`
 
 	// AwsEcsTaskDefinition defines the task definition.
-	AwsEcsTaskDefinition *AwsEcsTaskDefinition  `validate:"required"`
+	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
 
 	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
 	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
@@ -916,14 +916,14 @@ type DeployService struct {
 	AwsEcsTaskRole *AwsIamRole `validate:"required"`
 
 	// AwsEcsTaskPolicy defines the name of the iam policy that will be attached to the task role.
-	AwsEcsTaskPolicy         *AwsIamPolicy `validate:"required"`
+	AwsEcsTaskPolicy *AwsIamPolicy `validate:"required"`
 
 	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS
 	// task.
-	AwsCloudWatchLogGroup *AwsCloudWatchLogGroup  `validate:"required"`
+	AwsCloudWatchLogGroup *AwsCloudWatchLogGroup `validate:"required"`
 
 	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
-	AwsElbLoadBalancer *AwsElbLoadBalancer  `validate:"omitempty"`
+	AwsElbLoadBalancer *AwsElbLoadBalancer `validate:"omitempty"`
 
 	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
 	// it does not exist.
@@ -954,12 +954,12 @@ type AwsEcsCluster struct {
 func (m *AwsEcsCluster) Input() (*ecs.CreateClusterInput, error) {
 
 	input := &ecs.CreateClusterInput{
-		ClusterName: aws.String( m.ClusterName),
+		ClusterName: aws.String(m.ClusterName),
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &ecs.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -1063,7 +1063,7 @@ type AwsEcsService struct {
 	Tags []Tag `type:"list"`
 
 	// Force the current service is one exists to be deleted and a fresh service to be created.
-	ForceRecreate bool  `validate:"omitempty"`
+	ForceRecreate bool `validate:"omitempty"`
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ecs.CreateServiceInput) error
@@ -1081,7 +1081,7 @@ type AwsEcsTaskDefinition struct {
 	RegisterInput *ecs.RegisterTaskDefinitionInput `validate:"required"`
 
 	// Optional to update the placeholders before they are replaced in the task definition.
-	UpdatePlaceholders func(placeholders  map[string]string) error
+	UpdatePlaceholders func(placeholders map[string]string) error
 
 	// Optional to provide additional details to the register input.
 
@@ -1095,10 +1095,10 @@ type AwsEcsTaskDefinition struct {
 func (m *AwsEcsService) CreateInput(clusterName, taskDefinition string, subnetIds, securityGroupIds []string, ecsELBs []*ecs.LoadBalancer, sdService *AwsSdService) (*ecs.CreateServiceInput, error) {
 
 	var (
-		assignPublicIp *string
-	 	healthCheckGracePeriodSeconds *int64
+		assignPublicIp                *string
+		healthCheckGracePeriodSeconds *int64
 	)
-	if len(ecsELBs) > 0  {
+	if len(ecsELBs) > 0 {
 		assignPublicIp = aws.String("DISABLED")
 		healthCheckGracePeriodSeconds = aws.Int64(m.HealthCheckGracePeriodSeconds)
 	} else {
@@ -1106,8 +1106,8 @@ func (m *AwsEcsService) CreateInput(clusterName, taskDefinition string, subnetId
 	}
 
 	input := &ecs.CreateServiceInput{
-		Cluster: aws.String(clusterName),
-		ServiceName: aws.String(m.ServiceName),
+		Cluster:      aws.String(clusterName),
+		ServiceName:  aws.String(m.ServiceName),
 		DesiredCount: aws.Int64(m.DesiredCount),
 		DeploymentConfiguration: &ecs.DeploymentConfiguration{
 			// Refer to documentation for flags.ecsServiceMaximumPercent
@@ -1116,17 +1116,17 @@ func (m *AwsEcsService) CreateInput(clusterName, taskDefinition string, subnetId
 			MinimumHealthyPercent: aws.Int64(m.DeploymentMinimumHealthyPercent),
 		},
 		HealthCheckGracePeriodSeconds: healthCheckGracePeriodSeconds,
-		LaunchType: aws.String(m.LaunchType),
-		LoadBalancers: ecsELBs,
+		LaunchType:                    aws.String(m.LaunchType),
+		LoadBalancers:                 ecsELBs,
 		NetworkConfiguration: &ecs.NetworkConfiguration{
 			AwsvpcConfiguration: &ecs.AwsVpcConfiguration{
 				AssignPublicIp: assignPublicIp,
 				SecurityGroups: aws.StringSlice(securityGroupIds),
-				Subnets: aws.StringSlice(subnetIds),
+				Subnets:        aws.StringSlice(subnetIds),
 			},
 		},
 		EnableECSManagedTags: aws.Bool(m.EnableECSManagedTags),
-		TaskDefinition: aws.String(taskDefinition),
+		TaskDefinition:       aws.String(taskDefinition),
 	}
 
 	if input.DesiredCount == nil || *input.DesiredCount == 0 {
@@ -1145,7 +1145,7 @@ func (m *AwsEcsService) CreateInput(clusterName, taskDefinition string, subnetId
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &ecs.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -1163,8 +1163,8 @@ func (m *AwsEcsService) CreateInput(clusterName, taskDefinition string, subnetId
 func (m *AwsEcsService) UpdateInput(clusterName, taskDefinition string) (*ecs.UpdateServiceInput, error) {
 
 	input := &ecs.UpdateServiceInput{
-		Cluster: aws.String(clusterName),
-		Service: aws.String(m.ServiceName),
+		Cluster:        aws.String(clusterName),
+		Service:        aws.String(m.ServiceName),
 		TaskDefinition: aws.String(taskDefinition),
 
 		// Maintain the current count set on the existing service.
@@ -1180,9 +1180,8 @@ func (m *AwsEcsService) UpdateInput(clusterName, taskDefinition string) (*ecs.Up
 		if m.DesiredCount == 0 {
 			m.DesiredCount = 1
 		}
-		input.DesiredCount = aws.Int64(m.DesiredCount )
+		input.DesiredCount = aws.Int64(m.DesiredCount)
 	}
-
 
 	if m.PreUpdate != nil {
 		if err := m.PreUpdate(input); err != nil {
@@ -1235,14 +1234,14 @@ type AwsIamRole struct {
 func (m *AwsIamRole) Input() (*iam.CreateRoleInput, error) {
 
 	input := &iam.CreateRoleInput{
-		RoleName: aws.String( m.RoleName),
-		Description: aws.String( m.Description),
-		AssumeRolePolicyDocument: aws.String( m.AssumeRolePolicyDocument),
+		RoleName:                 aws.String(m.RoleName),
+		Description:              aws.String(m.Description),
+		AssumeRolePolicyDocument: aws.String(m.AssumeRolePolicyDocument),
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &iam.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -1293,8 +1292,8 @@ type AwsIamPolicy struct {
 func (m *AwsIamPolicy) Input() (*iam.CreatePolicyInput, error) {
 
 	input := &iam.CreatePolicyInput{
-		PolicyName: aws.String( m.PolicyName),
-		Description: aws.String( m.Description),
+		PolicyName:  aws.String(m.PolicyName),
+		Description: aws.String(m.Description),
 	}
 
 	dat, err := json.Marshal(m.PolicyDocument)
@@ -1314,7 +1313,7 @@ func (m *AwsIamPolicy) Input() (*iam.CreatePolicyInput, error) {
 
 // AwsIamPolicyDocument defines an AWS IAM policy used for defining access for IAM roles, users, and groups.
 type AwsIamPolicyDocument struct {
-	Version   string              `json:"Version"`
+	Version   string                 `json:"Version"`
 	Statement []AwsIamStatementEntry `json:"Statement"`
 }
 
@@ -1344,7 +1343,7 @@ type AwsCloudWatchLogGroup struct {
 func (m *AwsCloudWatchLogGroup) Input() (*cloudwatchlogs.CreateLogGroupInput, error) {
 
 	input := &cloudwatchlogs.CreateLogGroupInput{
-		LogGroupName: aws.String( m.LogGroupName),
+		LogGroupName: aws.String(m.LogGroupName),
 	}
 
 	input.Tags = make(map[string]*string)
@@ -1395,7 +1394,7 @@ type AwsElbLoadBalancer struct {
 	Type string `type:"string" enum:"LoadBalancerTypeEnum"`
 
 	// The number of seconds to wait before removing task from target group.
-	EcsTaskDeregistrationDelay   int `type:"long"`
+	EcsTaskDeregistrationDelay int `type:"long"`
 
 	// The key-value pairs to use for the tags.
 	Tags []Tag `type:"list"`
@@ -1411,20 +1410,20 @@ type AwsElbLoadBalancer struct {
 }
 
 // Input returns the AWS input for elbv2.CreateLoadBalance.
-func (m *AwsElbLoadBalancer) Input(subnetIds, securityGroupIds  []string) (*elbv2.CreateLoadBalancerInput, error) {
+func (m *AwsElbLoadBalancer) Input(subnetIds, securityGroupIds []string) (*elbv2.CreateLoadBalancerInput, error) {
 
 	input := &elbv2.CreateLoadBalancerInput{
-		Name: aws.String( m.Name),
-		IpAddressType: aws.String( m.IpAddressType),
-		Scheme: aws.String( m.Scheme),
-		Type: aws.String( m.Type),
-		Subnets:  aws.StringSlice(subnetIds),
+		Name:           aws.String(m.Name),
+		IpAddressType:  aws.String(m.IpAddressType),
+		Scheme:         aws.String(m.Scheme),
+		Type:           aws.String(m.Type),
+		Subnets:        aws.StringSlice(subnetIds),
 		SecurityGroups: aws.StringSlice(securityGroupIds),
 	}
 
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &elbv2.Tag{
-			Key: aws.String(t.Key),
+			Key:   aws.String(t.Key),
 			Value: aws.String(t.Value),
 		})
 	}
@@ -1543,22 +1542,22 @@ type AwsElbTargetGroup struct {
 func (m *AwsElbTargetGroup) Input(vpcId string) (*elbv2.CreateTargetGroupInput, error) {
 
 	input := &elbv2.CreateTargetGroupInput{
-		Name: aws.String( m.Name),
-		Port: aws.Int64( m.Port),
-		Protocol: aws.String( m.Protocol),
-		TargetType: aws.String( m.TargetType),
-		HealthCheckEnabled: aws.Bool( m.HealthCheckEnabled),
-		HealthCheckIntervalSeconds: aws.Int64( m.HealthCheckIntervalSeconds),
-		HealthCheckPath: aws.String( m.HealthCheckPath),
-		HealthCheckProtocol: aws.String( m.HealthCheckProtocol),
-		HealthCheckTimeoutSeconds: aws.Int64( m.HealthCheckTimeoutSeconds),
-		HealthyThresholdCount: aws.Int64( m.HealthyThresholdCount),
-		UnhealthyThresholdCount: aws.Int64( m.UnhealthyThresholdCount),
-		VpcId: aws.String(vpcId),
+		Name:                       aws.String(m.Name),
+		Port:                       aws.Int64(m.Port),
+		Protocol:                   aws.String(m.Protocol),
+		TargetType:                 aws.String(m.TargetType),
+		HealthCheckEnabled:         aws.Bool(m.HealthCheckEnabled),
+		HealthCheckIntervalSeconds: aws.Int64(m.HealthCheckIntervalSeconds),
+		HealthCheckPath:            aws.String(m.HealthCheckPath),
+		HealthCheckProtocol:        aws.String(m.HealthCheckProtocol),
+		HealthCheckTimeoutSeconds:  aws.Int64(m.HealthCheckTimeoutSeconds),
+		HealthyThresholdCount:      aws.Int64(m.HealthyThresholdCount),
+		UnhealthyThresholdCount:    aws.Int64(m.UnhealthyThresholdCount),
+		VpcId:                      aws.String(vpcId),
 	}
 
 	if m.Matcher != "" {
-		input.Matcher= &elbv2.Matcher{
+		input.Matcher = &elbv2.Matcher{
 			HttpCode: aws.String(m.Matcher),
 		}
 	}
@@ -1598,9 +1597,9 @@ type AwsSdPrivateDnsNamespace struct {
 func (m *AwsSdPrivateDnsNamespace) Input(vpcId string) (*servicediscovery.CreatePrivateDnsNamespaceInput, error) {
 
 	input := &servicediscovery.CreatePrivateDnsNamespaceInput{
-		Name: aws.String( m.Name),
-		Description: aws.String( m.Description),
-		Vpc: aws.String(vpcId),
+		Name:             aws.String(m.Name),
+		Description:      aws.String(m.Description),
+		Vpc:              aws.String(vpcId),
 		CreatorRequestId: aws.String("devops-deploy"),
 	}
 
@@ -1658,13 +1657,13 @@ type AwsSdService struct {
 func (m *AwsSdService) Input(namespaceId string) (*servicediscovery.CreateServiceInput, error) {
 
 	input := &servicediscovery.CreateServiceInput{
-		Name: aws.String( m.Name),
-		Description: aws.String( m.Description),
+		Name:        aws.String(m.Name),
+		Description: aws.String(m.Description),
 		NamespaceId: aws.String(namespaceId),
 		DnsConfig: &servicediscovery.DnsConfig{
 			DnsRecords: []*servicediscovery.DnsRecord{
 				{
-					TTL: aws.Int64(m.DnsRecordTTL),
+					TTL:  aws.Int64(m.DnsRecordTTL),
 					Type: aws.String("A"),
 				},
 			},
@@ -1684,13 +1683,9 @@ func (m *AwsSdService) Input(namespaceId string) (*servicediscovery.CreateServic
 	return input, nil
 }
 
-
-
 // DeployFunction .......
 type DeployFunction struct {
-
 	EnableLambdaVPC bool `validate:"omitempty"`
 
-	FuncName                          string `validate:"required"`
-
+	FuncName string `validate:"required"`
 }

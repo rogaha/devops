@@ -117,4 +117,3 @@ func readFile(f *os.File) ([]byte, string, error) {
 
 	return buffer, contentType, nil
 }
-
