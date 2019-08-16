@@ -1,6 +1,9 @@
 package devdeploy
 
 import (
+	"encoding/json"
+
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -11,6 +14,15 @@ import (
 	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/servicediscovery"
+	"github.com/pborman/uuid"
+	"github.com/pkg/errors"
+)
+
+// Success and failure markers.
+const (
+	Success = "\u2713"
+	Failed  = "\u2717"
 )
 
 // ModuleDetails defines information about the project determined from the go.mod file.
@@ -19,6 +31,16 @@ type ModuleDetails struct {
 	ProjectName string `validate:"required"`
 	GoModFile   string `validate:"required"`
 	GoModName   string `validate:"required"`
+}
+
+// DB mimics the general info needed for services used to define placeholders.
+type DBConnInfo struct {
+	Host       string
+	User       string
+	Pass       string
+	Database   string
+	Driver     string
+	DisableTLS bool
 }
 
 // DeploymentEnv .......
@@ -48,11 +70,11 @@ type DeploymentEnv struct {
 	// the deployment EC2 Security Group.
 	GitlabRunnerEc2SecurityGroupName string `validate:"required"`
 
-	// AwsS3Buckets is the list of S3 buckets for the project.
-	AwsS3Buckets               []*AwsS3Bucket
+	// AwsS3BucketPrivate sets the S3 bucket used internally for services.
+	AwsS3BucketPrivate     *AwsS3Bucket
 
-	// AwsS3BucketPublicName sets the S3 bucket name used to host static files for all services.
-	AwsS3BucketPublicName      string `validate:"omitempty"`
+	// AwsS3BucketPublic sets the S3 bucket used to host static files for all services.
+	AwsS3BucketPublic   *AwsS3Bucket
 
 	// AwsS3BucketPublicKeyPrefix defines the base S3 key prefix used to upload static files.
 	AwsS3BucketPublicKeyPrefix string `validate:"omitempty"`
@@ -66,6 +88,9 @@ type DeploymentEnv struct {
 
 	// AwsRdsDBInstance defines the name of the rds database instance and the detailed needed to create doesn't exist.
 	AwsRdsDBInstance *AwsRdsDBInstance
+
+	// DBConnInfo defines the database connection details.
+	DBConnInfo *DBConnInfo
 }
 
 // Tag describes a key/value pair that will help identify a resource.
@@ -110,11 +135,38 @@ type AwsEcrRepository struct {
 	// and tag values can have a maximum length of 256 characters.
 	Tags []Tag `type:"list"`
 
+	// The maximum number of images to maintain for the repository.
+	MaxImages int
+
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ecr.CreateRepositoryInput) error
 
 	// result is an unexported field that contains Repository details.
 	result *ecr.Repository
+}
+
+// Input returns the AWS input for ecr.CreateRepository.
+func (m *AwsEcrRepository) Input() (*ecr.CreateRepositoryInput, error) {
+
+	input := &ecr.CreateRepositoryInput{
+		RepositoryName: aws.String(m.RepositoryName),
+		ImageTagMutability: m.ImageTagMutability,
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &ecr.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // AwsEc2Vpc describes an AWS EC2 VPC.
@@ -146,12 +198,34 @@ type AwsEc2Vpc struct {
 	subnetIds []string
 }
 
+// Input returns the AWS input for ec2.CreateVpc.
+func (m *AwsEc2Vpc) Input() (*ec2.CreateVpcInput, error) {
+	input := &ec2.CreateVpcInput{
+		// The IPv4 network range for the VPC, in CIDR notation. For example, 10.0.0.0/16.
+		// CidrBlock is a required field for creating a custom VPC when IsDefault is false and VpcId is empty.
+		CidrBlock: aws.String(m.CidrBlock),
+
+		// Requests an Amazon-provided IPv6 CIDR block with a /56 prefix length for
+		// the VPC. You cannot specify the range of IP addresses, or the size of the CIDR block.
+		// This is only optional for creating a custom VPC when IsDefault is false and VpcId is empty.
+		AmazonProvidedIpv6CidrBlock: m.AmazonProvidedIpv6CidrBlock,
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
 // AwsEc2Subnet describes the detailed needed for creating a subnet for a VPC when not using the default region VPC.
 // @TODO: Apply tagging resource on create.
 type AwsEc2Subnet struct {
 	// The IPv4 network range for the subnet, in CIDR notation. For example, 10.0.0.0/24.
 	// CidrBlock is a required field
-	CidrBlock *string `type:"string" required:"true"`
+	CidrBlock string `type:"string" required:"true"`
 
 	// The Availability Zone for the subnet.
 	// Default: AWS selects one for you. If you create more than one subnet in your
@@ -167,6 +241,25 @@ type AwsEc2Subnet struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ec2.CreateSubnetInput) error
+}
+
+// Input returns the AWS input for ec2.CreateSubnet.
+func (m *AwsEc2Subnet) Input(vpcId string) (*ec2.CreateSubnetInput, error) {
+	input := &ec2.CreateSubnetInput{
+		CidrBlock: aws.String(m.CidrBlock),
+		AvailabilityZone: m.AvailabilityZone,
+		AvailabilityZoneId: m.AvailabilityZoneId,
+		Ipv6CidrBlock: m.Ipv6CidrBlock,
+		VpcId: aws.String(vpcId),
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // AwsEc2SecurityGroup describes an AWS ECS security group. This will use the VPC ID defined for the deployment when
@@ -191,6 +284,23 @@ type AwsEc2SecurityGroup struct {
 
 	// result is an unexported field that contains security group details.
 	result *ec2.SecurityGroup
+}
+
+// Input returns the AWS input for ec2.CreateSecurityGroup.
+func (m *AwsEc2SecurityGroup) Input(vpcId string) (*ec2.CreateSecurityGroupInput, error) {
+	input := &ec2.CreateSecurityGroupInput{
+		GroupName: aws.String(m.GroupName),
+		Description: aws.String(m.Description),
+		VpcId: aws.String(vpcId),
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // AwsS3Bucket defines the details needed to create a bucket that includes additional configuration.
@@ -226,6 +336,27 @@ type AwsS3Bucket struct {
 	CloudFront *AwsS3BucketCloudFront
 }
 
+// Input returns the AWS input for s3.CreateBucket.
+func (m *AwsS3Bucket) Input() (*s3.CreateBucketInput, error) {
+	input := &s3.CreateBucketInput{
+		Bucket: aws.String(m.BucketName),
+	}
+
+	if m.LocationConstraint != nil && *m.LocationConstraint != "" {
+		input.CreateBucketConfiguration = &s3.CreateBucketConfiguration{
+			LocationConstraint: m.LocationConstraint,
+		}
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
 // AwsS3BucketCloudFront defines the details needed to create a cloudfront distribution for an S3 bucket.
 type AwsS3BucketCloudFront struct {
 	// S3 key prefix to request your content from a directory in your Amazon S3 bucket.
@@ -248,6 +379,21 @@ type AwsS3BucketCloudFront struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *cloudfront.CreateDistributionInput) error
+}
+
+// Input returns the AWS input for cloudfront.CreateDistribution.
+func (m *AwsS3BucketCloudFront) Input() (*cloudfront.CreateDistributionInput, error) {
+	input := &cloudfront.CreateDistributionInput{
+		DistributionConfig: m.DistributionConfig,
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // AwsElasticCacheCluster defines the details needed to create an elastic cache cluster.
@@ -327,12 +473,6 @@ type AwsElasticCacheCluster struct {
 	// This parameter is currently disabled.
 	AutoMinorVersionUpgrade *bool `type:"boolean"`
 
-	// One or more VPC security groups associated with the cluster.
-	//
-	// Use this parameter only when you are creating a cluster in an Amazon Virtual
-	// Private Cloud (Amazon VPC).
-	SecurityGroupIds []*string `type:"list"`
-
 	// The number of days for which ElastiCache retains automatic snapshots before
 	// deleting them. For example, if you set SnapshotRetentionLimit to 5, a snapshot
 	// taken today is retained for 5 days before being deleted.
@@ -357,6 +497,39 @@ type AwsElasticCacheCluster struct {
 	result *elasticache.CacheCluster
 }
 
+// Input returns the AWS input for elasticache.CreateCacheCluster.
+func (m *AwsElasticCacheCluster) Input(securityGroupIds []string) (*elasticache.CreateCacheClusterInput, error) {
+
+	input := &elasticache.CreateCacheClusterInput{
+		CacheClusterId: aws.String(m.CacheClusterId),
+		CacheNodeType: aws.String(m.CacheNodeType),
+		NumCacheNodes: aws.Int64(m.NumCacheNodes),
+		CacheParameterGroupName: aws.String(m.CacheParameterGroupName),
+		CacheSubnetGroupName: aws.String(m.CacheSubnetGroupName),
+		Engine: aws.String(m.Engine),
+		EngineVersion: aws.String(m.EngineVersion),
+		Port: aws.Int64(m.Port),
+		AutoMinorVersionUpgrade: m.AutoMinorVersionUpgrade,
+		SecurityGroupIds: aws.StringSlice(securityGroupIds),
+		SnapshotRetentionLimit: m.SnapshotRetentionLimit,
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &elasticache.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
 // AwsElasticCacheParameter describes a name-value pair that is used to update the value of a parameter.
 type AwsElasticCacheParameter struct {
 	// The name of the parameter.
@@ -364,6 +537,24 @@ type AwsElasticCacheParameter struct {
 
 	// The value of the parameter.
 	ParameterValue string `type:"string"`
+}
+
+// CacheParameterGroupInput returns the AWS input for elasticache.ModifyCacheParameterGroup.
+func (m *AwsElasticCacheCluster) CacheParameterGroupInput(CacheParameterGroupName string) (*elasticache.ModifyCacheParameterGroupInput, error) {
+
+	input := &elasticache.ModifyCacheParameterGroupInput{
+		CacheParameterGroupName: aws.String(CacheParameterGroupName),
+		ParameterNameValues: []*elasticache.ParameterNameValue{},
+	}
+
+	for _, p := range m.ParameterNameValues {
+		input.ParameterNameValues = append(input.ParameterNameValues, &elasticache.ParameterNameValue{
+			ParameterName: aws.String(p.ParameterName),
+			ParameterValue: aws.String(p.ParameterValue),
+		})
+	}
+
+	return input, nil
 }
 
 // AwsRdsDBCluster defines the details needed to create a rds database cluster used for the aurora storage engine.
@@ -408,6 +599,12 @@ type AwsRdsDBCluster struct {
 	//    * Can't be a reserved word for the chosen database engine.
 	MasterUsername string `type:"string"`
 
+	// The password for the master database user. This password can contain any
+	// printable ASCII character except "/", """, or "@".
+	//
+	// Constraints: Must contain from 8 to 41 characters.
+	MasterUserPassword string `type:"string"`
+
 	// The number of days for which automated backups are retained.
 	//
 	// Default: 1
@@ -433,6 +630,44 @@ type AwsRdsDBCluster struct {
 
 	// contains filtered or unexported fields
 	result *rds.DBCluster
+}
+
+// Input returns the AWS input for rds.CreateDBCluster.
+func (m *AwsRdsDBCluster) Input(securityGroupIds []string) (*rds.CreateDBClusterInput, error) {
+
+	input := &rds.CreateDBClusterInput{
+		DBClusterIdentifier:   aws.String(m.DBClusterIdentifier),
+		DatabaseName:          aws.String(m.DatabaseName),
+		Engine:                aws.String(m.Engine),
+		EngineMode:            aws.String(m.EngineMode),
+		Port:                  aws.Int64(m.Port),
+		MasterUsername:        aws.String(m.MasterUsername),
+		MasterUserPassword:        aws.String(m.MasterUserPassword),
+		BackupRetentionPeriod: m.BackupRetentionPeriod,
+		CharacterSetName: m.CharacterSetName,
+		CopyTagsToSnapshot: m.CopyTagsToSnapshot,
+		VpcSecurityGroupIds: aws.StringSlice(securityGroupIds),
+	}
+
+	// The the password to a random value, it can be manually overwritten with the PreCreate method.
+	if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
+		input.MasterUserPassword = aws.String( uuid.NewRandom().String())
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &rds.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // AwsRdsDBInstance defines the details needed to create a rds database instance.
@@ -505,6 +740,12 @@ type AwsRdsDBInstance struct {
 	// MasterUsername is a required field for MySQL or PostgreSQL.
 	MasterUsername string `type:"string"`
 
+	// The password for the master database user. This password can contain any
+	// printable ASCII character except "/", """, or "@".
+	//
+	// Constraints: Must contain from 8 to 41 characters.
+	MasterUserPassword string `type:"string"`
+
 	// The port number on which the database accepts connections.
 	// Valid Values: 1150-65535
 	//
@@ -574,7 +815,7 @@ type AwsRdsDBInstance struct {
 	// Amazon Aurora
 	// 	Not applicable. The character set is managed by the DB cluster. For more
 	// 	information, see CreateDBCluster.
-	CharacterSetName string `type:"string"`
+	CharacterSetName *string `type:"string"`
 
 	// A value that indicates whether to copy tags from the DB instance to snapshots
 	// of the DB instance. By default, tags are not copied.
@@ -584,6 +825,9 @@ type AwsRdsDBInstance struct {
 	// 	this value for an Aurora DB instance has no effect on the DB cluster setting.
 	CopyTagsToSnapshot *bool `type:"boolean"`
 
+	// The identifier of the DB cluster that the instance will belong to.
+	DBClusterIdentifier *string `type:"string"`
+
 	// Tags to assign to the DB instance.
 	Tags []Tag `type:"list"`
 
@@ -592,6 +836,48 @@ type AwsRdsDBInstance struct {
 
 	// contains filtered or unexported fields
 	result *rds.DBInstance
+}
+
+// Input returns the AWS input for rds.CreateDBInstance.
+func (m *AwsRdsDBInstance) Input(securityGroupIds []string) (*rds.CreateDBInstanceInput, error) {
+
+	input := &rds.CreateDBInstanceInput{
+		DBInstanceIdentifier: aws.String( m.DBInstanceIdentifier),
+		DBName: aws.String( m.DBName),
+		Engine: aws.String( m.Engine),
+		MasterUsername: aws.String( m.MasterUsername),
+		MasterUserPassword:        aws.String(m.MasterUserPassword),
+		Port: aws.Int64( m.Port),
+		DBInstanceClass: aws.String( m.DBInstanceClass),
+		AllocatedStorage: aws.Int64( m.AllocatedStorage),
+		PubliclyAccessible: aws.Bool( m.PubliclyAccessible),
+		AutoMinorVersionUpgrade: aws.Bool( m.AutoMinorVersionUpgrade),
+		BackupRetentionPeriod: m.BackupRetentionPeriod,
+		CharacterSetName:  m.CharacterSetName,
+		CopyTagsToSnapshot: m.CopyTagsToSnapshot,
+		DBClusterIdentifier: m.DBClusterIdentifier,
+		VpcSecurityGroupIds: aws.StringSlice(securityGroupIds),
+	}
+
+	// The the password to a random value, it can be manually overwritten with the PreCreate method.
+	if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
+		input.MasterUserPassword = aws.String( uuid.NewRandom().String())
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &rds.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // DeployService .......
@@ -608,11 +894,18 @@ type DeployService struct {
 
 	ReleaseTag  string `validate:"required"`
 
-
+	StaticFilesDir      string `validate:"omitempty" example:"./cmd/web-api"`
 	StaticFilesS3Prefix string  `validate:"omitempty"`
+	StaticFilesImgResizeEnable bool  `validate:"omitempty"`
 
-	// AwsEcsCluster defines the name of the ecs cluster and the detailed needed to create doesn't exist.
+	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
+
+	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
+	AwsEcsService *AwsEcsService `validate:"required"`
+
+	// AwsEcsTaskDefinition defines the task definition.
+	AwsEcsTaskDefinition *AwsEcsTaskDefinition  `validate:"required"`
 
 	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
 	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
@@ -631,6 +924,10 @@ type DeployService struct {
 
 	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
 	AwsElbLoadBalancer *AwsElbLoadBalancer  `validate:"omitempty"`
+
+	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
+	// it does not exist.
+	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
 }
 
 // AwsEcsCluster defines the details needed to create an ecs cluster.
@@ -651,6 +948,249 @@ type AwsEcsCluster struct {
 
 	// contains filtered or unexported fields
 	result *ecs.Cluster
+}
+
+// Input returns the AWS input for ecs.CreateCluster.
+func (m *AwsEcsCluster) Input() (*ecs.CreateClusterInput, error) {
+
+	input := &ecs.CreateClusterInput{
+		ClusterName: aws.String( m.ClusterName),
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &ecs.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsEcsService defines the details needed to create an ecs service.
+type AwsEcsService struct {
+
+	// The name of your service. Up to 255 letters (uppercase and lowercase), numbers,
+	// and hyphens are allowed. Service names must be unique within a cluster, but
+	// you can have similarly named services in multiple clusters within a Region
+	// or across multiple Regions.
+	//
+	// ServiceName is a required field
+	ServiceName string `locationName:"serviceName" type:"string" required:"true"`
+
+	// The number of instantiations of the specified task definition to place and
+	// keep running on your cluster.
+	DesiredCount int64 `type:"integer"`
+
+	// If a service is using the rolling update (ECS) deployment type, the maximum
+	// percent parameter represents an upper limit on the number of tasks in a service
+	// that are allowed in the RUNNING or PENDING state during a deployment, as
+	// a percentage of the desired number of tasks (rounded down to the nearest
+	// integer), and while any container instances are in the DRAINING state if
+	// the service contains tasks using the EC2 launch type. This parameter enables
+	// you to define the deployment batch size. For example, if your service has
+	// a desired number of four tasks and a maximum percent value of 200%, the scheduler
+	// may start four new tasks before stopping the four older tasks (provided that
+	// the cluster resources required to do this are available). The default value
+	// for maximum percent is 200%.
+	//
+	// If a service is using the blue/green (CODE_DEPLOY) or EXTERNAL deployment
+	// types and tasks that use the EC2 launch type, the maximum percent value is
+	// set to the default value and is used to define the upper limit on the number
+	// of the tasks in the service that remain in the RUNNING state while the container
+	// instances are in the DRAINING state. If the tasks in the service use the
+	// Fargate launch type, the maximum percent value is not used, although it is
+	// returned when describing your service.
+	DeploymentMaximumPercent int64 `type:"integer"`
+
+	// If a service is using the rolling update (ECS) deployment type, the minimum
+	// healthy percent represents a lower limit on the number of tasks in a service
+	// that must remain in the RUNNING state during a deployment, as a percentage
+	// of the desired number of tasks (rounded up to the nearest integer), and while
+	// any container instances are in the DRAINING state if the service contains
+	// tasks using the EC2 launch type. This parameter enables you to deploy without
+	// using additional cluster capacity. For example, if your service has a desired
+	// number of four tasks and a minimum healthy percent of 50%, the scheduler
+	// may stop two existing tasks to free up cluster capacity before starting two
+	// new tasks. Tasks for services that do not use a load balancer are considered
+	// healthy if they are in the RUNNING state; tasks for services that do use
+	// a load balancer are considered healthy if they are in the RUNNING state and
+	// they are reported as healthy by the load balancer. The default value for
+	// minimum healthy percent is 100%.
+	//
+	// If a service is using the blue/green (CODE_DEPLOY) or EXTERNAL deployment
+	// types and tasks that use the EC2 launch type, the minimum healthy percent
+	// value is set to the default value and is used to define the lower limit on
+	// the number of the tasks in the service that remain in the RUNNING state while
+	// the container instances are in the DRAINING state. If the tasks in the service
+	// use the Fargate launch type, the minimum healthy percent value is not used,
+	// although it is returned when describing your service.
+	DeploymentMinimumHealthyPercent int64 `type:"integer"`
+
+	// The period of time, in seconds, that the Amazon ECS service scheduler should
+	// ignore unhealthy Elastic Load Balancing target health checks after a task
+	// has first started. This is only valid if your service is configured to use
+	// a load balancer. If your service's tasks take a while to start and respond
+	// to Elastic Load Balancing health checks, you can specify a health check grace
+	// period of up to 2,147,483,647 seconds. During that time, the ECS service
+	// scheduler ignores health check status. This grace period can prevent the
+	// ECS service scheduler from marking tasks as unhealthy and stopping them before
+	// they have time to come up.
+	HealthCheckGracePeriodSeconds int64 ` type:"integer"`
+
+	// The launch type on which to run your service. For more information, see Amazon
+	// ECS Launch Types (https://docs.aws.amazon.com/AmazonECS/latest/developerguide/launch_types.html)
+	// in the Amazon Elastic Container Service Developer Guide.
+	LaunchType string `type:"string" enum:"LaunchType"`
+
+	// Specifies whether to enable Amazon ECS managed tags for the tasks within
+	// the service. For more information, see Tagging Your Amazon ECS Resources
+	// (https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-using-tags.html)
+	// in the Amazon Elastic Container Service Developer Guide.
+	EnableECSManagedTags bool `type:"boolean"`
+
+	// The metadata that you apply to the service to help you categorize and organize
+	// them. Each tag consists of a key and an optional value, both of which you
+	// define. When a service is deleted, the tags are deleted as well. Tag keys
+	// can have a maximum character length of 128 characters, and tag values can
+	// have a maximum length of 256 characters.
+	Tags []Tag `type:"list"`
+
+	// Force the current service is one exists to be deleted and a fresh service to be created.
+	ForceRecreate bool  `validate:"omitempty"`
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *ecs.CreateServiceInput) error
+
+	// Optional to provide additional details to the update input.
+	PreUpdate func(input *ecs.UpdateServiceInput) error
+
+	// contains filtered or unexported fields
+	result *ecs.Service
+}
+
+// AwsEcsTaskDefinition defines the details needed to register an ecs task definition.
+type AwsEcsTaskDefinition struct {
+	// The task definition input defined.
+	RegisterInput *ecs.RegisterTaskDefinitionInput `validate:"required"`
+
+	// Optional to update the placeholders before they are replaced in the task definition.
+	UpdatePlaceholders func(placeholders  map[string]string) error
+
+	// Optional to provide additional details to the register input.
+
+	PreRegister func(input *ecs.RegisterTaskDefinitionInput) error
+
+	// contains filtered or unexported fields
+	result *ecs.TaskDefinition
+}
+
+// CreateInput returns the AWS input for ecs.CreateService.
+func (m *AwsEcsService) CreateInput(clusterName, taskDefinition string, subnetIds, securityGroupIds []string, ecsELBs []*ecs.LoadBalancer, sdService *AwsSdService) (*ecs.CreateServiceInput, error) {
+
+	var (
+		assignPublicIp *string
+	 	healthCheckGracePeriodSeconds *int64
+	)
+	if len(ecsELBs) > 0  {
+		assignPublicIp = aws.String("DISABLED")
+		healthCheckGracePeriodSeconds = aws.Int64(m.HealthCheckGracePeriodSeconds)
+	} else {
+		assignPublicIp = aws.String("ENABLED")
+	}
+
+	input := &ecs.CreateServiceInput{
+		Cluster: aws.String(clusterName),
+		ServiceName: aws.String(m.ServiceName),
+		DesiredCount: aws.Int64(m.DesiredCount),
+		DeploymentConfiguration: &ecs.DeploymentConfiguration{
+			// Refer to documentation for flags.ecsServiceMaximumPercent
+			MaximumPercent: aws.Int64(m.DeploymentMaximumPercent),
+			// Refer to documentation for flags.ecsServiceMinimumHealthyPercent
+			MinimumHealthyPercent: aws.Int64(m.DeploymentMinimumHealthyPercent),
+		},
+		HealthCheckGracePeriodSeconds: healthCheckGracePeriodSeconds,
+		LaunchType: aws.String(m.LaunchType),
+		LoadBalancers: ecsELBs,
+		NetworkConfiguration: &ecs.NetworkConfiguration{
+			AwsvpcConfiguration: &ecs.AwsVpcConfiguration{
+				AssignPublicIp: assignPublicIp,
+				SecurityGroups: aws.StringSlice(securityGroupIds),
+				Subnets: aws.StringSlice(subnetIds),
+			},
+		},
+		EnableECSManagedTags: aws.Bool(m.EnableECSManagedTags),
+		TaskDefinition: aws.String(taskDefinition),
+	}
+
+	if input.DesiredCount == nil || *input.DesiredCount == 0 {
+		input.DesiredCount = aws.Int64(1)
+	}
+
+	// Add the Service Discovery registry to the ECS service.
+	if sdService != nil {
+		if input.ServiceRegistries == nil {
+			input.ServiceRegistries = []*ecs.ServiceRegistry{}
+		}
+		input.ServiceRegistries = append(input.ServiceRegistries, &ecs.ServiceRegistry{
+			RegistryArn: aws.String(sdService.resultArn),
+		})
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &ecs.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// UpdateInput returns the AWS input for ecs.UpdateService.
+func (m *AwsEcsService) UpdateInput(clusterName, taskDefinition string) (*ecs.UpdateServiceInput, error) {
+
+	input := &ecs.UpdateServiceInput{
+		Cluster: aws.String(clusterName),
+		Service: aws.String(m.ServiceName),
+		TaskDefinition: aws.String(taskDefinition),
+
+		// Maintain the current count set on the existing service.
+		DesiredCount: m.result.DesiredCount,
+
+		// Maintain the current grace period.
+		HealthCheckGracePeriodSeconds: m.result.HealthCheckGracePeriodSeconds,
+	}
+
+	// If the desired count is zero because it was spun down for termination of staging env, update to launch
+	// with at least once task running for the service.
+	if input.DesiredCount == nil || *input.DesiredCount == 0 {
+		if m.DesiredCount == 0 {
+			m.DesiredCount = 1
+		}
+		input.DesiredCount = aws.Int64(m.DesiredCount )
+	}
+
+
+	if m.PreUpdate != nil {
+		if err := m.PreUpdate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // AwsIamRole defines the details needed to create an iam role.
@@ -691,6 +1231,31 @@ type AwsIamRole struct {
 	result *iam.Role
 }
 
+// Input returns the AWS input for iam.CreateRole.
+func (m *AwsIamRole) Input() (*iam.CreateRoleInput, error) {
+
+	input := &iam.CreateRoleInput{
+		RoleName: aws.String( m.RoleName),
+		Description: aws.String( m.Description),
+		AssumeRolePolicyDocument: aws.String( m.AssumeRolePolicyDocument),
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &iam.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
 // AwsIamPolicy defines the details needed to create an iam policy.
 type AwsIamPolicy struct {
 	// The friendly name of the policy.
@@ -724,6 +1289,29 @@ type AwsIamPolicy struct {
 	result *iam.Policy
 }
 
+// Input returns the AWS input for iam.CreatePolicy.
+func (m *AwsIamPolicy) Input() (*iam.CreatePolicyInput, error) {
+
+	input := &iam.CreatePolicyInput{
+		PolicyName: aws.String( m.PolicyName),
+		Description: aws.String( m.Description),
+	}
+
+	dat, err := json.Marshal(m.PolicyDocument)
+	if err != nil {
+		return input, errors.Wrap(err, "Failed to json encode policy document")
+	}
+	input.PolicyDocument = aws.String(string(dat))
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
 // AwsIamPolicyDocument defines an AWS IAM policy used for defining access for IAM roles, users, and groups.
 type AwsIamPolicyDocument struct {
 	Version   string              `json:"Version"`
@@ -752,6 +1340,26 @@ type AwsCloudWatchLogGroup struct {
 	PreCreate func(input *cloudwatchlogs.CreateLogGroupInput) error
 }
 
+// Input returns the AWS input for cloudwatchlogs.CreateLogGroup.
+func (m *AwsCloudWatchLogGroup) Input() (*cloudwatchlogs.CreateLogGroupInput, error) {
+
+	input := &cloudwatchlogs.CreateLogGroupInput{
+		LogGroupName: aws.String( m.LogGroupName),
+	}
+
+	input.Tags = make(map[string]*string)
+	for _, t := range m.Tags {
+		input.Tags[t.Key] = aws.String(t.Value)
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
 
 // AwsElbLoadBalancer defines the details needed to create an elbv2 load balancer.
 type AwsElbLoadBalancer struct {
@@ -786,12 +1394,303 @@ type AwsElbLoadBalancer struct {
 	// The type of load balancer. The default is application.
 	Type string `type:"string" enum:"LoadBalancerTypeEnum"`
 
+	// The number of seconds to wait before removing task from target group.
+	EcsTaskDeregistrationDelay   int `type:"long"`
+
 	// The key-value pairs to use for the tags.
 	Tags []Tag `type:"list"`
 
+	// The set of target groups for an application load balancer.
+	TargetGroup *AwsElbTargetGroup `type:"list"`
+
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *elbv2.CreateLoadBalancerInput) error
+
+	// contains filtered or unexported fields
+	result *elbv2.LoadBalancer
+}
+
+// Input returns the AWS input for elbv2.CreateLoadBalance.
+func (m *AwsElbLoadBalancer) Input(subnetIds, securityGroupIds  []string) (*elbv2.CreateLoadBalancerInput, error) {
+
+	input := &elbv2.CreateLoadBalancerInput{
+		Name: aws.String( m.Name),
+		IpAddressType: aws.String( m.IpAddressType),
+		Scheme: aws.String( m.Scheme),
+		Type: aws.String( m.Type),
+		Subnets:  aws.StringSlice(subnetIds),
+		SecurityGroups: aws.StringSlice(securityGroupIds),
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &elbv2.Tag{
+			Key: aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsElbTargetGroup defines the details needed to create an elbv2 target group.
+type AwsElbTargetGroup struct {
+	// The name of the target group.
+	//
+	// This name must be unique per region per account, can have a maximum of 32
+	// characters, must contain only alphanumeric characters or hyphens, and must
+	// not begin or end with a hyphen.
+	//
+	// Name is a required field
+	Name string `type:"string" required:"true"`
+
+	// The port on which the targets receive traffic. This port is used unless you
+	// specify a port override when registering the target. If the target is a Lambda
+	// function, this parameter does not apply.
+	Port int64 `min:"1" type:"integer"`
+
+	// The protocol to use for routing traffic to the targets. For Application Load
+	// Balancers, the supported protocols are HTTP and HTTPS. For Network Load Balancers,
+	// the supported protocols are TCP, TLS, UDP, or TCP_UDP. A TCP_UDP listener
+	// must be associated with a TCP_UDP target group. If the target is a Lambda
+	// function, this parameter does not apply.
+	Protocol string `type:"string" enum:"ProtocolEnum"`
+
+	// The type of target that you must specify when registering targets with this
+	// target group. You can't specify targets for a target group using more than
+	// one target type.
+	//
+	//    * instance - Targets are specified by instance ID. This is the default
+	//    value. If the target group protocol is UDP or TCP_UDP, the target type
+	//    must be instance.
+	//
+	//    * ip - Targets are specified by IP address. You can specify IP addresses
+	//    from the subnets of the virtual private cloud (VPC) for the target group,
+	//    the RFC 1918 range (10.0.0.0/8, 172.16.0.0/12, and 192.168.0.0/16), and
+	//    the RFC 6598 range (100.64.0.0/10). You can't specify publicly routable
+	//    IP addresses.
+	//
+	//    * lambda - The target groups contains a single Lambda function.
+	TargetType string `type:"string" enum:"TargetTypeEnum"`
+
+	// Indicates whether health checks are enabled. If the target type is lambda,
+	// health checks are disabled by default but can be enabled. If the target type
+	// is instance or ip, health checks are always enabled and cannot be disabled.
+	HealthCheckEnabled bool `type:"boolean"`
+
+	// The approximate amount of time, in seconds, between health checks of an individual
+	// target. For HTTP and HTTPS health checks, the range is 5–300 seconds. For
+	// TCP health checks, the supported values are 10 and 30 seconds. If the target
+	// type is instance or ip, the default is 30 seconds. If the target type is
+	// lambda, the default is 35 seconds.
+	HealthCheckIntervalSeconds int64 `min:"5" type:"integer"`
+
+	// [HTTP/HTTPS health checks] The ping path that is the destination on the targets
+	// for health checks. The default is /.
+	HealthCheckPath string `min:"1" type:"string"`
+
+	// The protocol the load balancer uses when performing health checks on targets.
+	// For Application Load Balancers, the default is HTTP. For Network Load Balancers,
+	// the default is TCP. The TCP protocol is supported for health checks only
+	// if the protocol of the target group is TCP, TLS, UDP, or TCP_UDP. The TLS,
+	// UDP, and TCP_UDP protocols are not supported for health checks.
+	HealthCheckProtocol string `type:"string" enum:"ProtocolEnum"`
+
+	// The amount of time, in seconds, during which no response from a target means
+	// a failed health check. For target groups with a protocol of HTTP or HTTPS,
+	// the default is 5 seconds. For target groups with a protocol of TCP or TLS,
+	// this value must be 6 seconds for HTTP health checks and 10 seconds for TCP
+	// and HTTPS health checks. If the target type is lambda, the default is 30
+	// seconds.
+	HealthCheckTimeoutSeconds int64 `min:"2" type:"integer"`
+
+	// The number of consecutive health checks successes required before considering
+	// an unhealthy target healthy. For target groups with a protocol of HTTP or
+	// HTTPS, the default is 5. For target groups with a protocol of TCP or TLS,
+	// the default is 3. If the target type is lambda, the default is 5.
+	HealthyThresholdCount int64 `min:"2" type:"integer"`
+
+	// The number of consecutive health check failures required before considering
+	// a target unhealthy. For target groups with a protocol of HTTP or HTTPS, the
+	// default is 2. For target groups with a protocol of TCP or TLS, this value
+	// must be the same as the healthy threshold count. If the target type is lambda,
+	// the default is 2.
+	UnhealthyThresholdCount int64 `min:"2" type:"integer"`
+
+	// [HTTP/HTTPS health checks] The HTTP codes to use when checking for a successful
+	// response from a target.
+	//
+	// For Application Load Balancers, you can specify values between 200 and 499,
+	// and the default value is 200. You can specify multiple values (for example,
+	// "200,202") or a range of values (for example, "200-299").
+	//
+	// HttpCode is a required field
+	Matcher string `type:"string"`
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *elbv2.CreateTargetGroupInput) error
+
+	// contains filtered or unexported fields
+	result *elbv2.TargetGroup
+}
+
+// Input returns the AWS input for elbv2.CreateTargetGroup.
+func (m *AwsElbTargetGroup) Input(vpcId string) (*elbv2.CreateTargetGroupInput, error) {
+
+	input := &elbv2.CreateTargetGroupInput{
+		Name: aws.String( m.Name),
+		Port: aws.Int64( m.Port),
+		Protocol: aws.String( m.Protocol),
+		TargetType: aws.String( m.TargetType),
+		HealthCheckEnabled: aws.Bool( m.HealthCheckEnabled),
+		HealthCheckIntervalSeconds: aws.Int64( m.HealthCheckIntervalSeconds),
+		HealthCheckPath: aws.String( m.HealthCheckPath),
+		HealthCheckProtocol: aws.String( m.HealthCheckProtocol),
+		HealthCheckTimeoutSeconds: aws.Int64( m.HealthCheckTimeoutSeconds),
+		HealthyThresholdCount: aws.Int64( m.HealthyThresholdCount),
+		UnhealthyThresholdCount: aws.Int64( m.UnhealthyThresholdCount),
+		VpcId: aws.String(vpcId),
+	}
+
+	if m.Matcher != "" {
+		input.Matcher= &elbv2.Matcher{
+			HttpCode: aws.String(m.Matcher),
+		}
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsSdPrivateDnsNamespace defines the details needed to create a service discovery private namespace.
+type AwsSdPrivateDnsNamespace struct {
+	// The name that you want to assign to this namespace. When you create a private
+	// DNS namespace, AWS Cloud Map automatically creates an Amazon Route 53 private
+	// hosted zone that has the same name as the namespace.
+	//
+	// Name is a required field
+	Name string `type:"string" required:"true"`
+
+	// A description for the namespace.
+	Description string `type:"string"`
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *servicediscovery.CreatePrivateDnsNamespaceInput) error
+
+	// The set of services for the dns namespace.
+	Service *AwsSdService `type:"list"`
+
+	// contains filtered or unexported fields
+	result *servicediscovery.NamespaceSummary
+}
+
+// Input returns the AWS input for servicediscovery.CreatePrivateDnsNamespace.
+func (m *AwsSdPrivateDnsNamespace) Input(vpcId string) (*servicediscovery.CreatePrivateDnsNamespaceInput, error) {
+
+	input := &servicediscovery.CreatePrivateDnsNamespaceInput{
+		Name: aws.String( m.Name),
+		Description: aws.String( m.Description),
+		Vpc: aws.String(vpcId),
+		CreatorRequestId: aws.String("devops-deploy"),
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsSdService defines the details needed to create a service for a namespace.
+type AwsSdService struct {
+	// The name that you want to assign to the service.
+	//
+	// Name is a required field
+	Name string `type:"string" required:"true"`
+
+	// A description for the service.
+	Description string `type:"string"`
+
+	// The amount of time, in seconds, that you want DNS resolvers to cache the
+	// settings for this record.
+	//
+	// Alias records don't include a TTL because Route 53 uses the TTL for the AWS
+	// resource that an alias record routes traffic to. If you include the AWS_ALIAS_DNS_NAME
+	// attribute when you submit a RegisterInstance request, the TTL value is ignored.
+	// Always specify a TTL for the service; you can use a service to register instances
+	// that create either alias or non-alias records.
+	//
+	DnsRecordTTL int64 `type:"long" required:"true"`
+
+	// The number of 30-second intervals that you want Cloud Map to wait after receiving
+	// an UpdateInstanceCustomHealthStatus request before it changes the health
+	// status of a service instance. For example, suppose you specify a value of
+	// 2 for FailureTheshold, and then your application sends an UpdateInstanceCustomHealthStatus
+	// request. Cloud Map waits for approximately 60 seconds (2 x 30) before changing
+	// the status of the service instance based on that request.
+	//
+	// Sending a second or subsequent UpdateInstanceCustomHealthStatus request with
+	// the same value before FailureThreshold x 30 seconds has passed doesn't accelerate
+	// the change. Cloud Map still waits FailureThreshold x 30 seconds after the
+	// first request to make the change.
+	HealthCheckFailureThreshold int64 `min:"1" type:"integer"`
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *servicediscovery.CreateServiceInput) error
+
+	// contains filtered or unexported fields
+	resultArn string
+}
+
+// Input returns the AWS input for servicediscovery.CreateService.
+func (m *AwsSdService) Input(namespaceId string) (*servicediscovery.CreateServiceInput, error) {
+
+	input := &servicediscovery.CreateServiceInput{
+		Name: aws.String( m.Name),
+		Description: aws.String( m.Description),
+		NamespaceId: aws.String(namespaceId),
+		DnsConfig: &servicediscovery.DnsConfig{
+			DnsRecords: []*servicediscovery.DnsRecord{
+				{
+					TTL: aws.Int64(m.DnsRecordTTL),
+					Type: aws.String("A"),
+				},
+			},
+		},
+		HealthCheckCustomConfig: &servicediscovery.HealthCheckCustomConfig{
+			FailureThreshold: aws.Int64(m.HealthCheckFailureThreshold),
+		},
+		CreatorRequestId: aws.String("devops-deploy"),
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 
 
+// DeployFunction .......
+type DeployFunction struct {
+
+	EnableLambdaVPC bool `validate:"omitempty"`
+
+	FuncName                          string `validate:"required"`
+
+}
