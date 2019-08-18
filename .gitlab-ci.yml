@@ -80,7 +80,7 @@ aws-ecs-go-web-api:deploy:dev:
     - dev
     - dev-web-api
   dependencies:
-    - 'webapi:build:dev'
+    - 'aws-ecs-go-web-api:build:dev'
     - 'db:migrate:dev'
   variables:
     TARGET_ENV: 'dev'
