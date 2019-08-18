@@ -27,56 +27,9 @@ func SetupBuildEnv(log *log.Logger, cfg *Config) error {
 	{
 		log.Println("\tECR - Get or create repository")
 
-		svc := ecr.New(cfg.AwsSession())
-
-		repositoryName := cfg.AwsEcrRepository.RepositoryName
-
-		var respository *ecr.Repository
-		descRes, err := svc.DescribeRepositories(&ecr.DescribeRepositoriesInput{
-			RepositoryNames: []*string{aws.String(repositoryName)},
-		})
+		respository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != ecr.ErrCodeRepositoryNotFoundException {
-				return errors.Wrapf(err, "Failed to describe repository '%s'.", repositoryName)
-			}
-		} else if len(descRes.Repositories) > 0 {
-			respository = descRes.Repositories[0]
-		}
-
-		if respository == nil {
-			input, err := cfg.AwsEcrRepository.Input()
-			if err != nil {
-				return err
-			}
-
-			// If no repository was found, create one.
-			createRes, err := svc.CreateRepository(input)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to create repository '%s'", repositoryName)
-			}
-			respository = createRes.Repository
-			log.Printf("\t\tCreated: %s", *respository.RepositoryArn)
-		} else {
-			log.Printf("\t\tFound: %s", *respository.RepositoryArn)
-
-			log.Println("\t\tChecking old ECR images.")
-			maxImages := cfg.AwsEcrRepository.MaxImages
-			if maxImages == 0 || maxImages > AwsRegistryMaximumImages {
-				maxImages = AwsRegistryMaximumImages
-			}
-			delIds, err := EcrPurgeImages(cfg.AwsCredentials, repositoryName, maxImages)
-			if err != nil {
-				return err
-			}
-
-			// Since ECR has max number of repository images, need to delete old ones so can stay under limit.
-			// If there are image IDs to delete, delete them.
-			if len(delIds) > 0 {
-				log.Printf("\t\tDeleted %d images that exceeded limit of %d", len(delIds), maxImages)
-				for _, imgId := range delIds {
-					log.Printf("\t\t\t%s", *imgId.ImageTag)
-				}
-			}
+			return err
 		}
 		cfg.AwsEcrRepository.result = respository
 
@@ -84,4 +37,61 @@ func SetupBuildEnv(log *log.Logger, cfg *Config) error {
 	}
 
 	return nil
+}
+
+// setupAwsEcrRepository ensures the AWS ECR repository exists else creates it.
+func setupAwsEcrRepository(log *log.Logger, cfg *Config, repo *AwsEcrRepository) (*ecr.Repository, error) {
+	svc := ecr.New(cfg.AwsSession())
+
+	repositoryName := repo.RepositoryName
+
+	var respository *ecr.Repository
+	descRes, err := svc.DescribeRepositories(&ecr.DescribeRepositoriesInput{
+		RepositoryNames: []*string{aws.String(repositoryName)},
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != ecr.ErrCodeRepositoryNotFoundException {
+			return nil, errors.Wrapf(err, "Failed to describe repository '%s'.", repositoryName)
+		}
+	} else if len(descRes.Repositories) > 0 {
+		respository = descRes.Repositories[0]
+	}
+
+	if respository == nil {
+		input, err :=repo.Input()
+		if err != nil {
+			return nil, err
+		}
+
+		// If no repository was found, create one.
+		createRes, err := svc.CreateRepository(input)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create repository '%s'", repositoryName)
+		}
+		respository = createRes.Repository
+		log.Printf("\t\tCreated: %s", *respository.RepositoryArn)
+	} else {
+		log.Printf("\t\tFound: %s", *respository.RepositoryArn)
+
+		log.Println("\t\tChecking old ECR images.")
+		maxImages := repo.MaxImages
+		if maxImages == 0 || maxImages > AwsRegistryMaximumImages {
+			maxImages = AwsRegistryMaximumImages
+		}
+		delIds, err := EcrPurgeImages(cfg.AwsCredentials, repositoryName, maxImages)
+		if err != nil {
+			return nil, err
+		}
+
+		// Since ECR has max number of repository images, need to delete old ones so can stay under limit.
+		// If there are image IDs to delete, delete them.
+		if len(delIds) > 0 {
+			log.Printf("\t\tDeleted %d images that exceeded limit of %d", len(delIds), maxImages)
+			for _, imgId := range delIds {
+				log.Printf("\t\t\t%s", *imgId.ImageTag)
+			}
+		}
+	}
+
+	return respository, nil
 }

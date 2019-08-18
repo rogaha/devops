@@ -79,16 +79,17 @@ type DeployService struct {
 }
 
 // DeployServiceToTargetEnv deploys a service to AWS ECS. The following steps will be executed for deployment:
-// 1. Find AWS Route 53 Zones for service hostnames.
-// 2. Setup service discovery for service.
-// 3. Ensure the Cloudwatch Log group exists.
-// 4. Setup the AWS Elastic Load Balancer if enabled.
-// 5. Setup the AWS ECS Cluster for the service.
-// 6. Register AWS ECS task definition.
-// 7. Check for an existing AWS ECS service and if it needs to be recreated.
-// 8. Create or update the AWS ECS service.
-// 9. Sync static files to AWS S3.
-// 10. Wait for AWS ECS service to enter a stable state.
+// 1. AWS ECR repository
+// 2. Find AWS Route 53 Zones for service hostnames.
+// 3. Setup service discovery for service.
+// 4. Ensure the Cloudwatch Log group exists.
+// 5. Setup the AWS Elastic Load Balancer if enabled.
+// 6. Setup the AWS ECS Cluster for the service.
+// 7. Register AWS ECS task definition.
+// 8. Check for an existing AWS ECS service and if it needs to be recreated.
+// 9. Create or update the AWS ECS service.
+// 10. Sync static files to AWS S3.
+// 11. Wait for AWS ECS service to enter a stable state.
 func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *DeployService) error {
 
 	err := SetupDeploymentEnv(log, cfg)
@@ -127,7 +128,20 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 	subnetIds := cfg.AwsEc2Vpc.subnetIds
 	securityGroupIds := []string{*cfg.AwsEc2SecurityGroup.result.GroupId}
 
-	// Step 1: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
+	// Step 1: Find the AWS ECR repository.
+	{
+		log.Println("\tECR - Get repository")
+
+		respository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
+		if err != nil {
+			return err
+		}
+		cfg.AwsEcrRepository.result = respository
+
+		log.Printf("\t%s\tECR Respository available\n", Success)
+	}
+
+	// Step 2: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
 	var zoneArecNames = map[string][]string{}
 	if targetService.ServiceHostPrimary != "" {
 		log.Println("\tRoute 53 - Get or create hosted zones.")
@@ -270,7 +284,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		}
 	}
 
-	// Step 2: Setup service discovery.
+	// Step 3: Setup service discovery.
 	var sdService *AwsSdService
 	if targetService.AwsSdPrivateDnsNamespace != nil {
 		log.Println("\tService Discovery - Get or Create Namespace")
@@ -425,7 +439,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		}
 	}
 
-	// Step 3: Try to find the AWS Cloudwatch Log Group by name or create new one.
+	// Step 4: Try to find the AWS Cloudwatch Log Group by name or create new one.
 	{
 		log.Println("\tCloudWatch Logs - Get or Create Log Group")
 
@@ -453,7 +467,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		log.Printf("\t%s\tLog Group setup\n", Success)
 	}
 
-	// Step 4: If an Elastic Load Balancer is enabled, then ensure one exists else create one.
+	// Step 5: If an Elastic Load Balancer is enabled, then ensure one exists else create one.
 	var ecsELBs []*ecs.LoadBalancer
 	if targetService.AwsElbLoadBalancer != nil {
 
@@ -902,7 +916,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		}
 	}
 
-	// Step 5: Try to find AWS ECS Cluster by name or create new one.
+	// Step 6: Try to find AWS ECS Cluster by name or create new one.
 	{
 		log.Println("ECS - Get or Create Cluster")
 
@@ -960,7 +974,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		log.Printf("\t%s\tECS Cluster setup.\n", Success)
 	}
 
-	// Step 6: Register a new ECS task definition.
+	// Step 7: Register a new ECS task definition.
 	var taskDef *ecs.TaskDefinition
 	{
 		log.Println("\tECS - Register task definition")
@@ -1384,7 +1398,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		targetService.AwsEcsTaskDefinition.result = taskDef
 	}
 
-	// Step 7: Find the existing ECS service and check if it needs to be recreated
+	// Step 8: Find the existing ECS service and check if it needs to be recreated
 	var ecsService *ecs.Service
 	{
 		svc := ecs.New(cfg.AwsSession())
@@ -1517,7 +1531,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		targetService.AwsEcsService.result = ecsService
 	}
 
-	// Step 8: If the service exists on ECS, update the service, else create a new service.
+	// Step 9: If the service exists on ECS, update the service, else create a new service.
 	if ecsService != nil && *ecsService.Status != "INACTIVE" {
 		log.Println("\tECS - Update Service")
 
@@ -1566,7 +1580,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 	}
 	targetService.AwsEcsService.result = ecsService
 
-	// Step 9: When static files are enabled to be to stored on S3, we need to upload all of them.
+	// Step 10: When static files are enabled to be to stored on S3, we need to upload all of them.
 	if targetService.StaticFilesDir != "" && targetService.StaticFilesS3Prefix != "" {
 		log.Println("\tUpload static files to public S3 bucket")
 
@@ -1592,7 +1606,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			targetService.StaticFilesS3Prefix)
 	}
 
-	// Step 10: Wait for the updated or created service to enter a stable state.
+	// Step 11: Wait for the updated or created service to enter a stable state.
 	{
 		log.Println("\tWaiting for service to enter stable state.")
 
