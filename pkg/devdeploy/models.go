@@ -611,6 +611,9 @@ type AwsRdsDBCluster struct {
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *rds.CreateDBClusterInput) error `json:"-"`
 
+	// Optional to provide method to be excecuted after database has been created.
+	AfterCreate func(res *rds.DBCluster, info *DBConnInfo) error `json:"-"`
+
 	// contains filtered or unexported fields
 	result *rds.DBCluster
 }
@@ -821,6 +824,9 @@ type AwsRdsDBInstance struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *rds.CreateDBInstanceInput) error `json:"-"`
+
+	// Optional to provide method to be excecuted after database has been created.
+	AfterCreate func(res *rds.DBInstance, info *DBConnInfo) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *rds.DBInstance

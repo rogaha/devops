@@ -29,7 +29,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:     "env",
-			Usage:    "target environment",
+			Usage:    "target environment, one of [dev|stage|prod]",
 			Required: true,
 		},
 		cli.StringFlag{
@@ -196,6 +196,31 @@ func main() {
 						dryRun := c.Bool("dry-run")
 
 						return config.DeployFunctionForTargetEnv(log, awsCredentials, targetEnv, funcName, releaseTag, dryRun)
+					},
+				},
+			},
+		},
+
+		// schema command used to run database schema migrations.
+		{
+			Name:    "schema",
+			Aliases: []string{"b"},
+			Usage:   "manage the database schema",
+			Subcommands: []cli.Command{
+				{
+					Name:  "migrate",
+					Usage: "run the schema migrations",
+					Flags: []cli.Flag{
+						cli.BoolFlag{
+							Name:  "unittest",
+							Usage: "print out the build details",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						targetEnv := c.GlobalString("env")
+						isUnittest := c.Bool("unittest")
+
+						return config.RunSchemaMigrationsForTargetEnv(log, awsCredentials, targetEnv, isUnittest)
 					},
 				},
 			},

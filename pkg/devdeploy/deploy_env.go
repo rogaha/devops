@@ -552,6 +552,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 			cfg.AwsRdsDBCluster.result = descRes.DBClusters[0]
 		}
 
+		var created bool
 		if cfg.AwsRdsDBCluster.result == nil {
 			if cfg.DBConnInfo != nil && cfg.DBConnInfo.Pass != "" {
 				cfg.AwsRdsDBCluster.MasterUsername = cfg.DBConnInfo.User
@@ -595,13 +596,14 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 				return errors.Wrapf(err, "Failed to create cluster '%s'", dBClusterIdentifier)
 			}
 			cfg.AwsRdsDBCluster.result = createRes.DBCluster
+			created = true
 
 			log.Printf("\t\tCreated: %s", *cfg.AwsRdsDBCluster.result.DBClusterArn)
 		} else {
 			log.Printf("\t\tFound: %s", *cfg.AwsRdsDBCluster.result.DBClusterArn)
 		}
 
-		dbCluster := *cfg.AwsRdsDBCluster.result
+		dbCluster := cfg.AwsRdsDBCluster.result
 
 		// The status of the cluster.
 		log.Printf("\t\t\tStatus: %s", *dbCluster.Status)
@@ -638,6 +640,14 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 
 			// Ensure the newly created database is seeded.
 			log.Printf("\t\tOpen database connection")
+		}
+
+		// Execute the post AwsRdsDBCluster method if defined.
+		if created && cfg.AwsRdsDBInstance.AfterCreate != nil {
+			err = cfg.AwsRdsDBCluster.AfterCreate(dbCluster, cfg.DBConnInfo)
+			if err != nil {
+				return err
+			}
 		}
 
 		log.Printf("\t%s\tDB Cluster available\n", Success)
@@ -688,6 +698,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		}
 
 		// No DB instance was found, so create a new one.
+		var created bool
 		if cfg.AwsRdsDBInstance.result == nil {
 
 			if cfg.DBConnInfo != nil && cfg.DBConnInfo.Pass != "" {
@@ -735,6 +746,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 				return errors.Wrapf(err, "Failed to create instance '%s'", dBInstanceIdentifier)
 			}
 			cfg.AwsRdsDBInstance.result = createRes.DBInstance
+			created = true
 
 			log.Printf("\t\tCreated: %s", *cfg.AwsRdsDBInstance.result.DBInstanceArn)
 		} else {
@@ -805,6 +817,14 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		}
 
 		cfg.AwsRdsDBInstance.result = dbInstance
+
+		// Execute the post created method if defined.
+		if created && cfg.AwsRdsDBInstance.AfterCreate != nil {
+			err = cfg.AwsRdsDBInstance.AfterCreate(dbInstance, cfg.DBConnInfo)
+			if err != nil {
+				return err
+			}
+		}
 
 		log.Printf("\t%s\tDB Instance available\n", Success)
 	}

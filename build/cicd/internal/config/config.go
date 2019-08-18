@@ -1,19 +1,23 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"geeks-accelerator/oss/devops/build/cicd/internal/schema"
 	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
+	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/iancoleman/strcase"
+	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -335,6 +339,15 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 		Tags: []devdeploy.Tag{
 			{Key: devdeploy.AwsTagNameProject, Value: cfg.ProjectName},
 			{Key: devdeploy.AwsTagNameEnv, Value: cfg.Env},
+		},
+		AfterCreate: func(res *rds.DBInstance, dbInfo *devdeploy.DBConnInfo) error {
+			masterDb, err := sqlx.Open(dbInfo.Driver, dbInfo.URL())
+			if err != nil {
+				return errors.WithMessage(err, "Failed to connect to db for schema migration.")
+			}
+			defer masterDb.Close()
+
+			return schema.Migrate(context.Background(), masterDb, log, false)
 		},
 	}
 
