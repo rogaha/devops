@@ -47,4 +47,4 @@ as the entrypoint for the target layer `dev`. The `docker-compose.yaml` config f
 and mounts the source code for the project as a volume. Fresh with then monitor your code base and (re)starts your 
 service everytime you save a Go or template file. 
 
-Fresh using the configuration file [fresh-auto-reload.conf](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/fresh-auto-reload.conf)
+Fresh using the configuration file [fresh-auto-reload.conf](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/fresh-auto-reload.conf)

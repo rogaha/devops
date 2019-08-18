@@ -32,7 +32,7 @@ COPY pkg ./pkg
 COPY ${service_path} ${service_path}
 
 # Copy the global templates.
-ADD fresh-auto-reload.conf /runner.conf
+ADD configs/fresh-auto-reload.conf /runner.conf
 
 WORKDIR ${service_path}
 

@@ -1,0 +1,115 @@
+image: geeksaccelerator/docker-library:golang1.12-docker
+
+services:
+  - docker:dind
+
+variables:
+  DOCKER_TLS_CERTDIR: ""
+
+before_script:
+  - 'go install ./build/cicd'
+
+stages:
+  - build:dev
+  - migrate:dev
+  - deploy:dev
+  - build:stage
+  - migrate:stage
+  - deploy:stage
+  - build:prod
+  - migrate:prod
+  - deploy:prod
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+
+# Everything should get this, whether through subtemplates or explicitly
+# embedded in a job.
+.job_tmpl: &job_tmpl
+  only:
+    - master
+
+.build_tmpl: &build_tmpl
+  <<: *job_tmpl
+  script:
+    - 'cicd --env=${TARGET_ENV} build service --name=${SERVICE}'
+
+.deploy_tmpl: &deploy_tmpl
+  <<: *job_tmpl
+  script:
+    - 'cicd --env=${TARGET_ENV} deploy service --name=${SERVICE}'
+
+.migrate_tmpl: &migrate_tmpl
+  <<: *job_tmpl
+  script:
+    - 'cicd --env=${TARGET_ENV} schema migrate'
+
+db:migrate:dev:
+  <<: *migrate_tmpl
+  stage: migrate:dev
+  tags:
+    - dev
+  only:
+    - master
+    - dev
+    - /^dev-.*$/
+  variables:
+    TARGET_ENV: 'dev'
+    AWS_USE_ROLE: 'true'
+
+aws-ecs-go-web-api:build:dev:
+  <<: *build_tmpl
+  stage: build:dev
+  tags:
+    - dev
+  only:
+    - master
+    - dev
+    - dev-web-api
+  variables:
+    TARGET_ENV: 'dev'
+    SERVICE: 'aws-ecs-go-web-api'
+    AWS_USE_ROLE: 'true'
+aws-ecs-go-web-api:deploy:dev:
+  <<: *deploy_tmpl
+  stage: deploy:dev
+  tags:
+    - dev
+  only:
+    - master
+    - dev
+    - dev-web-api
+  dependencies:
+    - 'webapi:build:dev'
+    - 'db:migrate:dev'
+  variables:
+    TARGET_ENV: 'dev'
+    SERVICE: 'aws-ecs-go-web-api'
+    AWS_USE_ROLE: 'true'
+
+#ddlogscollector:deploy:stage:
+#  <<: *deploy_stage_tmpl
+#  variables:
+#    TARGET_ENV: 'stage'
+#    ECS_CLUSTER: '${ECS_CLUSTER}'
+#    SERVICE: 'ddlogscollector'
+#    S3_BUCKET: 'keenispace-services-stage'
+#    S3_KEY: 'aws/lambda/ddlogscollector/src/ddlogscollector-stage.zip'
+#    ENABLE_VPC: 0
+#  only:
+#    - master
+#    - stage
+#ddlogscollector:deploy:prod:
+#  <<: *deploy_prod_tmpl
+#  variables:
+#    TARGET_ENV: 'prod'
+#    ECS_CLUSTER: '${ECS_CLUSTER}'
+#    SERVICE: 'ddlogscollector'
+#    S3_BUCKET: 'keenispace-services-prod'
+#    S3_KEY: 'aws/lambda/ddlogscollector/src/ddlogscollector-prod.zip'
+#    ENABLE_VPC: 0
+#  only:
+#    - master
+#    - prod
+#  #dependencies:
+#  #  - 'ddlogscollector:deploy:stage'
