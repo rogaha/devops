@@ -520,7 +520,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		dBClusterIdentifier := cfg.AwsRdsDBCluster.DBClusterIdentifier
 
 		// Secret ID used to store the DB username and password across deploys.
-		dbSecretId := cfg.SecretID(dBClusterIdentifier)
+		dbSecretId := cfg.SecretID(filepath.Join("rds", dBClusterIdentifier))
 
 		// Retrieve the current secret value if something is stored.
 		{
@@ -554,8 +554,13 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 
 		if cfg.AwsRdsDBCluster.result == nil {
 			if cfg.DBConnInfo != nil && cfg.DBConnInfo.Pass != "" {
-				cfg.AwsRdsDBCluster.MasterUserPassword = cfg.DBConnInfo.User
+				cfg.AwsRdsDBCluster.MasterUsername = cfg.DBConnInfo.User
 				cfg.AwsRdsDBCluster.MasterUserPassword = cfg.DBConnInfo.Pass
+			}
+
+			input, err := cfg.AwsRdsDBCluster.Input([]string{securityGroupId})
+			if err != nil {
+				return err
 			}
 
 			// Store the secret first in the event that create fails.
@@ -563,7 +568,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 				// Only set the password right now,
 				// all other configuration details will be set after the database instance is created.
 				cfg.DBConnInfo = &DBConnInfo{
-					Pass: cfg.AwsRdsDBCluster.MasterUserPassword,
+					Pass: *input.MasterUserPassword,
 				}
 
 				// Json encode the db details to be stored as secret text.
@@ -582,11 +587,6 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 					return errors.Wrap(err, "Failed to create new secret with db credentials")
 				}
 				log.Printf("\t\tStored Secret\n")
-			}
-
-			input, err := cfg.AwsRdsDBCluster.Input([]string{securityGroupId})
-			if err != nil {
-				return err
 			}
 
 			// If no cluster was found, create one.
@@ -652,7 +652,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		dBInstanceIdentifier := cfg.AwsRdsDBInstance.DBInstanceIdentifier
 
 		// Secret ID used to store the DB username and password across deploys.
-		dbSecretId := cfg.SecretID(dBInstanceIdentifier)
+		dbSecretId := cfg.SecretID(filepath.Join("rds", dBInstanceIdentifier))
 
 		// Retrieve the current secret value if something is stored.
 		{
@@ -691,44 +691,42 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		if cfg.AwsRdsDBInstance.result == nil {
 
 			if cfg.DBConnInfo != nil && cfg.DBConnInfo.Pass != "" {
-				cfg.AwsRdsDBInstance.MasterUserPassword = cfg.DBConnInfo.User
+				cfg.AwsRdsDBInstance.MasterUsername = cfg.DBConnInfo.User
 				cfg.AwsRdsDBInstance.MasterUserPassword = cfg.DBConnInfo.Pass
 			}
 
 			if cfg.AwsRdsDBCluster != nil {
 				cfg.AwsRdsDBInstance.DBClusterIdentifier = aws.String(cfg.AwsRdsDBCluster.DBClusterIdentifier)
-			} else {
-				// Only store the db password for the instance when no cluster is defined.
-				// Store the secret first in the event that create fails.
-				if cfg.DBConnInfo == nil {
-					// Only set the password right now,
-					// all other configuration details will be set after the database instance is created.
-					cfg.DBConnInfo = &DBConnInfo{
-						Pass: cfg.AwsRdsDBInstance.MasterUserPassword,
-					}
-
-					// Json encode the db details to be stored as secret text.
-					dat, err := json.Marshal(cfg.DBConnInfo)
-					if err != nil {
-						return errors.Wrap(err, "Failed to marshal db credentials")
-					}
-
-					// Create the new entry in AWS Secret Manager with the database password.
-					sm := secretsmanager.New(cfg.AwsSession())
-					_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
-						Name:         aws.String(dbSecretId),
-						SecretString: aws.String(string(dat)),
-					})
-					if err != nil {
-						return errors.Wrap(err, "Failed to create new secret with db credentials")
-					}
-					log.Printf("\t\tStored Secret\n")
-				}
 			}
 
 			input, err := cfg.AwsRdsDBInstance.Input([]string{securityGroupId})
 			if err != nil {
 				return err
+			}
+
+			// Only store the db password for the instance when no cluster is defined.
+			// Store the secret first in the event that create fails.
+			if cfg.AwsRdsDBCluster == nil && cfg.DBConnInfo == nil {
+				cfg.DBConnInfo = &DBConnInfo{
+					Pass: *input.MasterUserPassword,
+				}
+
+				// Json encode the db details to be stored as secret text.
+				dat, err := json.Marshal(cfg.DBConnInfo)
+				if err != nil {
+					return errors.Wrap(err, "Failed to marshal db credentials")
+				}
+
+				// Create the new entry in AWS Secret Manager with the database password.
+				sm := secretsmanager.New(cfg.AwsSession())
+				_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
+					Name:         aws.String(dbSecretId),
+					SecretString: aws.String(string(dat)),
+				})
+				if err != nil {
+					return errors.Wrap(err, "Failed to create new secret with db credentials")
+				}
+				log.Printf("\t\tStored Secret\n")
 			}
 
 			// If no instance was found, create one.
@@ -1015,13 +1013,9 @@ func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) err
 			if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != s3.ErrCodeBucketAlreadyExists && aerr.Code() != s3.ErrCodeBucketAlreadyOwnedByYou) {
 				return errors.Wrapf(err, "failed to create s3 bucket '%s'", bucketName)
 			}
-
-			// If bucket found during create, returns it.
-			log.Printf("\t\tFound: %s\n", bucketName)
-		} else {
-
-			// If no bucket found during create, create new one.
 			log.Printf("\t\tCreated: %s\n", bucketName)
+		} else {
+			log.Printf("\t\tFound: %s\n", bucketName)
 		}
 	}
 

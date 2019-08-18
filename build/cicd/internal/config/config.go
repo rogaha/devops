@@ -17,8 +17,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-// ProjectNamePrefix will be appending to the name of the project.
-const ProjectNamePrefix = "gitw-"
+const (
+	// ProjectNamePrefix will be appending to the name of the project.
+	ProjectNamePrefix = "gitw-"
+
+	// GitLabProjectBaseUrl is the base url used to create links to a specific CI/CD job or pipeline by ID.
+	GitLabProjectBaseUrl = "https://gitlab.com/geeks-accelerator/oss/saas-starter-kit"
+)
 
 // Env defines the target deployment environment.
 type Env = string
@@ -182,7 +187,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 	cfg.AwsS3BucketPublicKeyPrefix = "/public"
 
 	// For production, enable Cloudfront CND for all static files to avoid serving them from the slower S3 option.
-	if cfg.Env == Env_Prod {
+	if true || cfg.Env == Env_Prod {
 		cfg.AwsS3BucketPublic.CloudFront = &devdeploy.AwsS3BucketCloudFront{
 			// S3 key prefix to request your content from a directory in your Amazon S3 bucket.
 			OriginPath: cfg.AwsS3BucketPublicKeyPrefix,
@@ -219,7 +224,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 					CloudFrontDefaultCertificate: aws.Bool(true),
 				},
 				PriceClass:      aws.String("PriceClass_All"),
-				CallerReference: aws.String("devops-deploy"),
+				CallerReference: aws.String("devops-deploy" + cfg.AwsS3BucketPublic.BucketName),
 			},
 		}
 	}

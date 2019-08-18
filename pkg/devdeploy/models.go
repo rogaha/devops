@@ -1194,6 +1194,14 @@ func (m *AwsIamRole) Input() (*iam.CreateRoleInput, error) {
 	return input, nil
 }
 
+// Arn returns the ARN from the found or created IAM role.
+func (m *AwsIamRole) Arn() string {
+	if m == nil || m.result == nil || m.result.Arn == nil {
+		return ""
+	}
+	return *m.result.Arn
+}
+
 // AwsIamPolicy defines the details needed to create an iam policy.
 type AwsIamPolicy struct {
 	// The friendly name of the policy.
@@ -1225,6 +1233,14 @@ type AwsIamPolicy struct {
 
 	// contains filtered or unexported fields
 	result *iam.Policy
+}
+
+// Arn returns the ARN from the found or created IAM Policy.
+func (m *AwsIamPolicy) Arn() string {
+	if m == nil || m.result == nil || m.result.Arn == nil {
+		return ""
+	}
+	return *m.result.Arn
 }
 
 // Input returns the AWS input for iam.CreatePolicy.

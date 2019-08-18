@@ -58,7 +58,7 @@ func setupAwsEcrRepository(log *log.Logger, cfg *Config, repo *AwsEcrRepository)
 	}
 
 	if respository == nil {
-		input, err :=repo.Input()
+		input, err := repo.Input()
 		if err != nil {
 			return nil, err
 		}

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/iancoleman/strcase"
@@ -19,9 +20,6 @@ type Service = string
 
 var (
 	Service_AwsEcsGoWebApi = "aws-ecs-go-web-api"
-
-	// Duplicate of aws-ecs-go-web-api service but with an ELB enabled.
-	Service_AwsEcsGoWebApiElb = "aws-ecs-go-web-api-elb"
 )
 
 // ErrInvalidService occurs when no config can be determined for a service.
@@ -30,7 +28,8 @@ var ErrInvalidService = errors.New("Invalid service")
 // ServiceContext defines the flags for deploying a service.
 type ServiceContext struct {
 	// Required flags.
-	Name string `validate:"required" example:"web-api"`
+	Name                 string `validate:"required" example:"web-api"`
+	AwsEcsTaskDefinition func(cfg *devdeploy.Config, srv *devdeploy.DeployService) (*ecs.RegisterTaskDefinitionInput, error)
 
 	// Optional flags.
 	EnableHTTPS         bool     `validate:"omitempty" example:"false"`
@@ -49,6 +48,8 @@ type ServiceContext struct {
 // NewServiceContext returns the ServiceContext for a service that is configured for the target deployment env.
 func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceContext, error) {
 
+	// =========================================================================
+	// New service context.
 	ctx := &ServiceContext{
 		Name:               serviceName,
 		DesiredCount:       1,
@@ -59,7 +60,8 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 		ReleaseTag: devdeploy.GitLabCiReleaseTag(cfg.Env, serviceName),
 	}
 
-	// Enable settings for the stage and prod envs.
+	// =========================================================================
+	// Context settings based on target env.
 	if cfg.Env == Env_Stage || cfg.Env == Env_Prod {
 		ctx.EnableHTTPS = true
 		ctx.StaticFilesS3Enable = true
@@ -69,20 +71,148 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 		ctx.StaticFilesS3Enable = true
 	}
 
+	// =========================================================================
+	// Shared details that could be applied to all task definitions.
+
+	// Define a base set of environment variables that can be assigned to individual container definitions.
+	baseEnvVals := func(cfg *devdeploy.Config, srv *devdeploy.DeployService) []*ecs.KeyValuePair {
+
+		var ciJobURL string
+		if id := os.Getenv("CI_JOB_ID"); id != "" {
+			ciJobURL = strings.TrimRight(GitLabProjectBaseUrl, "/") + "/-/jobs/" + os.Getenv("CI_JOB_ID")
+		}
+
+		var ciPipelineURL string
+		if id := os.Getenv("CI_PIPELINE_ID"); id != "" {
+			ciPipelineURL = strings.TrimRight(GitLabProjectBaseUrl, "/") + "/pipelines/" + os.Getenv("CI_PIPELINE_ID")
+		}
+
+		return []*ecs.KeyValuePair{
+			ecsKeyValuePair(devdeploy.ENV_KEY_ECS_CLUSTER, srv.AwsEcsCluster.ClusterName),
+			ecsKeyValuePair(devdeploy.ENV_KEY_ECS_SERVICE, srv.AwsEcsService.ServiceName),
+			ecsKeyValuePair("AWS_REGION", cfg.AwsCredentials.Region),
+			ecsKeyValuePair("AWS_USE_ROLE", "true"),
+			ecsKeyValuePair("AWSLOGS_GROUP", srv.AwsCloudWatchLogGroup.LogGroupName),
+			ecsKeyValuePair("ECS_ENABLE_CONTAINER_METADATA", "true"),
+			ecsKeyValuePair("CI_COMMIT_REF_NAME", os.Getenv("CI_COMMIT_REF_NAME")),
+			ecsKeyValuePair("CI_COMMIT_SHORT_SHA", os.Getenv("CI_COMMIT_SHORT_SHA")),
+			ecsKeyValuePair("CI_COMMIT_SHA", os.Getenv("CI_COMMIT_SHA")),
+			ecsKeyValuePair("CI_COMMIT_TAG", os.Getenv("CI_COMMIT_TAG")),
+			ecsKeyValuePair("CI_JOB_ID", os.Getenv("CI_JOB_ID")),
+			ecsKeyValuePair("CI_PIPELINE_ID", os.Getenv("CI_PIPELINE_ID")),
+			ecsKeyValuePair("CI_JOB_URL", ciJobURL),
+			ecsKeyValuePair("CI_PIPELINE_URL", ciPipelineURL),
+		}
+	}
+
+	// =========================================================================
+	// Service dependant settings.
 	switch serviceName {
 	case Service_AwsEcsGoWebApi:
-		ctx.ServiceHostPrimary = fmt.Sprintf("%s.devops.example.saasstartupkit.com", cfg.Env)
 
+		ctx.ServiceHostPrimary = fmt.Sprintf("%s.devops.example.saasstartupkit.com", cfg.Env)
 		ctx.ServiceHostNames = []string{
 			fmt.Sprintf("api.%s.devops.example.saasstartupkit.com", cfg.Env),
 		}
 
-	// Duplicate service but with an ELB enabled using a different hostname.
-	case Service_AwsEcsGoWebApiElb:
-		ctx.EnableElb = true
+		// Define the service task definition with a function to enable use of config and deploy details.
+		ctx.AwsEcsTaskDefinition = func(cfg *devdeploy.Config, srv *devdeploy.DeployService) (*ecs.RegisterTaskDefinitionInput, error) {
 
-		ctx.ServiceHostPrimary = fmt.Sprintf("elb.%s.devops.example.saasstartupkit.com", cfg.Env)
-		ctx.ServiceDir = filepath.Join(cfg.ProjectRoot, "examples", Service_AwsEcsGoWebApi)
+			// Defined a container definition for the specific service.
+			container1 := &ecs.ContainerDefinition{
+				Name:      aws.String(ctx.Name),
+				Image:     aws.String(srv.ReleaseImage),
+				Essential: aws.Bool(true),
+				LogConfiguration: &ecs.LogConfiguration{
+					LogDriver: aws.String("awslogs"),
+					Options: map[string]*string{
+						"awslogs-group":         aws.String(srv.AwsCloudWatchLogGroup.LogGroupName),
+						"awslogs-region":        aws.String(cfg.AwsCredentials.Region),
+						"awslogs-stream-prefix": aws.String("ecs"),
+					},
+				},
+				PortMappings: []*ecs.PortMapping{
+					&ecs.PortMapping{
+						HostPort:      aws.Int64(80),
+						Protocol:      aws.String("tcp"),
+						ContainerPort: aws.Int64(80),
+					},
+				},
+				Cpu:               aws.Int64(128),
+				MemoryReservation: aws.Int64(128),
+				Environment:       baseEnvVals(cfg, srv),
+				HealthCheck: &ecs.HealthCheck{
+					Retries: aws.Int64(3),
+					Command: aws.StringSlice([]string{
+						"CMD-SHELL",
+						"curl -f http://localhost/ping || exit 1",
+					}),
+					Timeout:     aws.Int64(5),
+					Interval:    aws.Int64(60),
+					StartPeriod: aws.Int64(60),
+				},
+				Ulimits: []*ecs.Ulimit{
+					&ecs.Ulimit{
+						Name:      aws.String("nofile"),
+						SoftLimit: aws.Int64(987654),
+						HardLimit: aws.Int64(999999),
+					},
+				},
+			}
+
+			// If the service has HTTPS enabled with the use of an AWS Elastic Load Balancer, then need to enable
+			// traffic for port 443 for SSL traffic to get terminated on the deployed tasks.
+			if ctx.EnableHTTPS && !ctx.EnableElb {
+				container1.PortMappings = append(container1.PortMappings, &ecs.PortMapping{
+					HostPort:      aws.Int64(443),
+					Protocol:      aws.String("tcp"),
+					ContainerPort: aws.Int64(443),
+				})
+			}
+
+			// Append env vars for the service task.
+			container1.Environment = append(container1.Environment,
+				ecsKeyValuePair("SERVICE_NAME", srv.ServiceName),
+				ecsKeyValuePair("PROJECT_NAME", cfg.ProjectName),
+
+				// Use placeholders for these environment variables that will be replaced with devdeploy.DeployServiceToTargetEnv
+				ecsKeyValuePair("WEB_API_SERVICE_HOST", "{HTTP_HOST}"),
+				ecsKeyValuePair("WEB_API_SERVICE_HTTPS_HOST", "{HTTPS_HOST}"),
+				ecsKeyValuePair("WEB_API_SERVICE_ENABLE_HTTPS", "{HTTPS_ENABLED}"),
+				ecsKeyValuePair("WEB_API_SERVICE_BASE_URL", "{APP_BASE_URL}"),
+				ecsKeyValuePair("WEB_API_SERVICE_HOST_NAMES", "{HOST_NAMES}"),
+				ecsKeyValuePair("WEB_API_SERVICE_STATICFILES_S3_ENABLED", "{STATIC_FILES_S3_ENABLED}"),
+				ecsKeyValuePair("WEB_API_SERVICE_STATICFILES_S3_PREFIX", "{STATIC_FILES_S3_PREFIX}"),
+				ecsKeyValuePair("WEB_API_SERVICE_STATICFILES_CLOUDFRONT_ENABLED", "{STATIC_FILES_CLOUDFRONT_ENABLED}"),
+				ecsKeyValuePair("WEB_API_REDIS_HOST", "{CACHE_HOST}"),
+				ecsKeyValuePair("WEB_API_DB_HOST", "{DB_HOST}"),
+				ecsKeyValuePair("WEB_API_DB_USERNAME", "{DB_USER}"),
+				ecsKeyValuePair("WEB_API_DB_PASSWORD", "{DB_PASS}"),
+				ecsKeyValuePair("WEB_API_DB_DATABASE", "{DB_DATABASE}"),
+				ecsKeyValuePair("WEB_API_DB_DRIVER", "{DB_DRIVER}"),
+				ecsKeyValuePair("WEB_API_DB_DISABLE_TLS", "{DB_DISABLE_TLS}"),
+				ecsKeyValuePair("WEB_API_AWS_S3_BUCKET_PRIVATE", "{AWS_S3_BUCKET_PRIVATE}"),
+				ecsKeyValuePair("WEB_API_AWS_S3_BUCKET_PUBLIC", "{AWS_S3_BUCKET_PUBLIC}"),
+				ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_UPDATE_TASK_IPS, "{ROUTE53_UPDATE_TASK_IPS}"),
+				ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_ZONES, "{ROUTE53_ZONES}"),
+			)
+
+			// Define the full task definition for the service.
+			def := &ecs.RegisterTaskDefinitionInput{
+				Family:           aws.String(srv.ServiceName),
+				ExecutionRoleArn: aws.String(srv.AwsEcsExecutionRole.Arn()),
+				TaskRoleArn:      aws.String(srv.AwsEcsTaskRole.Arn()),
+				NetworkMode:      aws.String("awsvpc"),
+				ContainerDefinitions: []*ecs.ContainerDefinition{
+					// Include the single container definition for the service. Additional definitions could be added
+					// here like one for datadog.
+					container1,
+				},
+				RequiresCompatibilities: aws.StringSlice([]string{"FARGATE"}),
+			}
+
+			return def, nil
+		}
 
 	default:
 		return nil, errors.Wrapf(ErrInvalidService,
@@ -183,7 +313,7 @@ func (ctx *ServiceContext) Deploy(log *log.Logger, cfg *devdeploy.Config) (*devd
 		},
 		AttachRolePolicyArns: []string{"arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"},
 	}
-	log.Printf("\t\tSet ECS Execution Role Name to '%s'.", srv.AwsEcsExecutionRole)
+	log.Printf("\t\tSet ECS Execution Role Name to '%s'.", srv.AwsEcsExecutionRole.RoleName)
 
 	// Define the ECS task role. This role is used by the task itself for calling other AWS services.
 	srv.AwsEcsTaskRole = &devdeploy.AwsIamRole{
@@ -195,7 +325,7 @@ func (ctx *ServiceContext) Deploy(log *log.Logger, cfg *devdeploy.Config) (*devd
 			{Key: devdeploy.AwsTagNameEnv, Value: cfg.Env},
 		},
 	}
-	log.Printf("\t\tSet ECS Task Role Name to '%s'.", srv.AwsEcsTaskRole)
+	log.Printf("\t\tSet ECS Task Role Name to '%s'.", srv.AwsEcsTaskRole.RoleName)
 
 	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS tasks.
 	srv.AwsCloudWatchLogGroup = &devdeploy.AwsCloudWatchLogGroup{
@@ -286,155 +416,14 @@ func (ctx *ServiceContext) Deploy(log *log.Logger, cfg *devdeploy.Config) (*devd
 		srv.AwsEcsService.DeploymentMaximumPercent = 200
 	}
 
-	portMappings := []*ecs.PortMapping{
-		&ecs.PortMapping{
-			HostPort:      aws.Int64(80),
-			Protocol:      aws.String("tcp"),
-			ContainerPort: aws.Int64(80),
-		},
-	}
-	if ctx.EnableHTTPS && !ctx.EnableElb {
-		portMappings = append(portMappings, &ecs.PortMapping{
-			HostPort:      aws.Int64(443),
-			Protocol:      aws.String("tcp"),
-			ContainerPort: aws.Int64(443),
-		})
-	}
-
-	baseEnvVars := []*ecs.KeyValuePair{
-		&ecs.KeyValuePair{
-			Name:  aws.String("AWS_REGION"),
-			Value: aws.String(cfg.AwsCredentials.Region),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("AWS_USE_ROLE"),
-			Value: aws.String("true"),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("AWSLOGS_GROUP"),
-			Value: aws.String(srv.AwsCloudWatchLogGroup.LogGroupName),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("ECS_CLUSTER"),
-			Value: aws.String(srv.AwsEcsCluster.ClusterName),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("ECS_SERVICE"),
-			Value: aws.String(srv.AwsEcsService.ServiceName),
-		},
-
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_COMMIT_REF_NAME"),
-			Value: aws.String(os.Getenv("CI_COMMIT_REF_NAME")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_COMMIT_SHORT_SHA"),
-			Value: aws.String(os.Getenv("CI_COMMIT_SHORT_SHA")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_COMMIT_SHA"),
-			Value: aws.String(os.Getenv("CI_COMMIT_SHA")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_COMMIT_TAG"),
-			Value: aws.String(os.Getenv("CI_COMMIT_TAG")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_JOB_ID"),
-			Value: aws.String(os.Getenv("CI_JOB_ID")),
-		},
-
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_JOB_URL"),
-			Value: aws.String("https://gitlab.com/geeks-accelerator/oss/saas-starter-kit/-/jobs/" + os.Getenv("CI_JOB_URL")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_PIPELINE_ID"),
-			Value: aws.String(os.Getenv("CI_PIPELINE_ID")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("CI_PIPELINE_URL"),
-			Value: aws.String("https://gitlab.com/geeks-accelerator/oss/saas-starter-kit/pipelines/" + os.Getenv("CI_PIPELINE_ID")),
-		},
-		&ecs.KeyValuePair{
-			Name:  aws.String("ECS_ENABLE_CONTAINER_METADATA"),
-			Value: aws.String("true"),
-		},
-	}
-
 	// AwsEcsTaskDefinition defines the details for registering a new ECS task definition.
-	srv.AwsEcsTaskDefinition = &devdeploy.AwsEcsTaskDefinition{
-		RegisterInput: &ecs.RegisterTaskDefinitionInput{
-			Family:           aws.String("asdff"),
-			ExecutionRoleArn: aws.String("asdff"),
-			TaskRoleArn:      aws.String("asdff"),
-			NetworkMode:      aws.String("awsvpc"),
-			ContainerDefinitions: []*ecs.ContainerDefinition{
+	taskDef, err := ctx.AwsEcsTaskDefinition(cfg, srv)
+	if err != nil {
+		return nil, err
+	}
 
-				&ecs.ContainerDefinition{
-					Name:      aws.String(ctx.Name),
-					Image:     aws.String("{RELEASE_IMAGE}"),
-					Essential: aws.Bool(true),
-					LogConfiguration: &ecs.LogConfiguration{
-						LogDriver: aws.String("awslogs"),
-						Options: map[string]*string{
-							"awslogs-group":         aws.String(srv.AwsCloudWatchLogGroup.LogGroupName),
-							"awslogs-region":        aws.String(cfg.AwsCredentials.Region),
-							"awslogs-stream-prefix": aws.String("ecs"),
-						},
-					},
-					PortMappings:      portMappings,
-					Cpu:               aws.Int64(128),
-					MemoryReservation: aws.Int64(128),
-					Environment:       baseEnvVars,
-					/*
-						{"name": "WEB_APP_HTTP_HOST", "value": "{HTTP_HOST}"},
-						{"name": "WEB_APP_HTTPS_HOST", "value": "{HTTPS_HOST}"},
-						{"name": "WEB_APP_SERVICE_PROJECT", "value": "{APP_PROJECT}"},
-						{"name": "WEB_APP_SERVICE_BASE_URL", "value": "{APP_BASE_URL}"},
-						{"name": "WEB_APP_SERVICE_HOST_NAMES", "value": "{HOST_NAMES}"},
-						{"name": "WEB_APP_SERVICE_ENABLE_HTTPS", "value": "{HTTPS_ENABLED}"},
-						{"name": "WEB_APP_SERVICE_STATICFILES_S3_ENABLED", "value": "{STATIC_FILES_S3_ENABLED}"},
-						{"name": "WEB_APP_SERVICE_STATICFILES_S3_PREFIX", "value": "{STATIC_FILES_S3_PREFIX}"},
-						{"name": "WEB_APP_SERVICE_STATICFILES_CLOUDFRONT_ENABLED", "value": "{STATIC_FILES_CLOUDFRONT_ENABLED}"},
-						{"name": "WEB_APP_SERVICE_STATICFILES_IMG_RESIZE_ENABLED", "value": "{STATIC_FILES_IMG_RESIZE_ENABLED}"},
-						{"name": "WEB_APP_SERVICE_EMAIL_SENDER", "value": "{EMAIL_SENDER}"},
-						{"name": "WEB_APP_SERVICE_WEB_API_BASE_URL", "value": "{WEB_API_BASE_URL}"},
-						{"name": "WEB_APP_REDIS_HOST", "value": "{CACHE_HOST}"},
-						{"name": "WEB_APP_DB_HOST", "value": "{DB_HOST}"},
-						{"name": "WEB_APP_DB_USER", "value": "{DB_USER}"},
-						{"name": "WEB_APP_DB_PASS", "value": "{DB_PASS}"},
-						{"name": "WEB_APP_DB_DATABASE", "value": "{DB_DATABASE}"},
-						{"name": "WEB_APP_DB_DRIVER", "value": "{DB_DRIVER}"},
-						{"name": "WEB_APP_DB_DISABLE_TLS", "value": "{DB_DISABLE_TLS}"},
-						{"name": "WEB_APP_AUTH_USE_AWS_SECRET_MANAGER", "value": "true"},
-						{"name": "WEB_APP_AUTH_AWS_SECRET_ID", "value": "auth-{ECS_SERVICE}"},
-						{"name": "WEB_APP_AWS_S3_BUCKET_PRIVATE", "value": "{AWS_S3_BUCKET_PRIVATE}"},
-						{"name": "WEB_APP_AWS_S3_BUCKET_PUBLIC", "value": "{AWS_S3_BUCKET_PUBLIC}"},
-						{"name": "ROUTE53_UPDATE_TASK_IPS", "value": "{ROUTE53_UPDATE_TASK_IPS}"},
-						{"name": "ROUTE53_ZONES", "value": "{ROUTE53_ZONES}"},
-					*/
-					HealthCheck: &ecs.HealthCheck{
-						Retries: aws.Int64(3),
-						Command: aws.StringSlice([]string{
-							"CMD-SHELL",
-							"curl -f http://localhost/ping || exit 1",
-						}),
-						Timeout:     aws.Int64(5),
-						Interval:    aws.Int64(60),
-						StartPeriod: aws.Int64(60),
-					},
-					Ulimits: []*ecs.Ulimit{
-						&ecs.Ulimit{
-							Name:      aws.String("nofile"),
-							SoftLimit: aws.Int64(987654),
-							HardLimit: aws.Int64(999999),
-						},
-					},
-				},
-			},
-			RequiresCompatibilities: aws.StringSlice([]string{"FARGATE"}),
-		},
+	srv.AwsEcsTaskDefinition = &devdeploy.AwsEcsTaskDefinition{
+		RegisterInput: taskDef,
 		UpdatePlaceholders: func(placeholders map[string]string) error {
 
 			// Try to find the Datadog API key, this value is optional.
@@ -464,6 +453,8 @@ func (ctx *ServiceContext) Deploy(log *log.Logger, cfg *devdeploy.Config) (*devd
 			return nil
 		},
 	}
+
+	log.Printf("\t\tDeploying task to '%s'.", ctx.ServiceHostPrimary)
 
 	return srv, nil
 }
@@ -561,4 +552,12 @@ func DeployServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCred
 	}
 
 	return devdeploy.DeployServiceToTargetEnv(log, cfg, details)
+}
+
+// ecsKeyValuePair returns an *ecs.KeyValuePair
+func ecsKeyValuePair(name, value string) *ecs.KeyValuePair {
+	return &ecs.KeyValuePair{
+		Name:  aws.String(name),
+		Value: aws.String(value),
+	}
 }

@@ -16,14 +16,21 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	ENV_KEY_ECS_CLUSTER             = "ECS_CLUSTER"
+	ENV_KEY_ECS_SERVICE             = "ECS_SERVICE"
+	ENV_KEY_ROUTE53_ZONES           = "ROUTE53_ZONES"
+	ENV_KEY_ROUTE53_UPDATE_TASK_IPS = "ROUTE53_UPDATE_TASK_IPS"
+)
+
 // EcsServiceTaskInit allows newly spun up ECS Service Tasks to register their public IP with Route 53.
 func EcsServiceTaskInit(log *log.Logger, awsSession *session.Session) error {
 	if awsSession == nil {
 		return nil
 	}
 
-	ecsClusterName := os.Getenv("ECS_CLUSTER")
-	ecsServiceName := os.Getenv("ECS_SERVICE")
+	ecsClusterName := os.Getenv(ENV_KEY_ECS_CLUSTER)
+	ecsServiceName := os.Getenv(ENV_KEY_ECS_SERVICE)
 
 	// If both env variables are empty, this instance of the services is not running on AWS ECS.
 	if ecsClusterName == "" && ecsServiceName == "" {
@@ -31,7 +38,7 @@ func EcsServiceTaskInit(log *log.Logger, awsSession *session.Session) error {
 	}
 
 	var zoneArecNames = map[string][]string{}
-	if v := os.Getenv("ROUTE53_ZONES"); v != "" {
+	if v := os.Getenv(ENV_KEY_ROUTE53_ZONES); v != "" {
 		dat, err := base64.RawURLEncoding.DecodeString(v)
 		if err != nil {
 			return errors.Wrapf(err, "failed to base64 URL decode zones")
@@ -44,7 +51,7 @@ func EcsServiceTaskInit(log *log.Logger, awsSession *session.Session) error {
 	}
 
 	var registerServiceTasks bool
-	if v := os.Getenv("ROUTE53_UPDATE_TASK_IPS"); v != "" {
+	if v := os.Getenv(ENV_KEY_ROUTE53_UPDATE_TASK_IPS); v != "" {
 		var err error
 		registerServiceTasks, err = strconv.ParseBool(v)
 		if err != nil {

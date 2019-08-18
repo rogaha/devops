@@ -76,6 +76,8 @@ type DeployService struct {
 	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
 	// it does not exist.
 	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
+
+	ReleaseImage string `validate:"omitempty"`
 }
 
 // DeployServiceToTargetEnv deploys a service to AWS ECS. The following steps will be executed for deployment:
@@ -137,6 +139,8 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			return err
 		}
 		cfg.AwsEcrRepository.result = respository
+
+		targetService.ReleaseImage = *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
 
 		log.Printf("\t%s\tECR Respository available\n", Success)
 	}
@@ -979,8 +983,6 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 	{
 		log.Println("\tECS - Register task definition")
 
-		releaseImage := *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
-
 		// Update the placeholders for the supplied task definition.
 		var taskDefInput *ecs.RegisterTaskDefinitionInput
 		{
@@ -989,9 +991,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			// List of placeholders that can be used in task definition and replaced on deployment.
 			placeholders := map[string]string{
 				"{SERVICE}":               targetService.ServiceName,
-				"{RELEASE_IMAGE}":         releaseImage,
-				"{ECS_CLUSTER}":           targetService.AwsEcsCluster.ClusterName,
-				"{ECS_SERVICE}":           targetService.AwsEcsService.ServiceName,
+				"{RELEASE_IMAGE}":         targetService.ReleaseImage,
 				"{AWS_REGION}":            cfg.AwsCredentials.Region,
 				"{AWS_LOGS_GROUP}":        targetService.AwsCloudWatchLogGroup.LogGroupName,
 				"{AWS_S3_BUCKET_PRIVATE}": cfg.AwsS3BucketPrivate.BucketName,
@@ -1020,8 +1020,10 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 				"{DB_DRIVER}":      "",
 				"{DB_DISABLE_TLS}": "",
 
-				"{ROUTE53_ZONES}":           "",
-				"{ROUTE53_UPDATE_TASK_IPS}": "false",
+				"{" + ENV_KEY_ECS_CLUSTER + "}":             targetService.AwsEcsCluster.ClusterName,
+				"{" + ENV_KEY_ECS_SERVICE + "}":             targetService.AwsEcsService.ServiceName,
+				"{" + ENV_KEY_ROUTE53_ZONES + "}":           "",
+				"{" + ENV_KEY_ROUTE53_UPDATE_TASK_IPS + "}": "false",
 
 				// Directly map GitLab CICD env variables set during deploy.
 				"{CI_COMMIT_REF_NAME}":     os.Getenv("CI_COMMIT_REF_NAME"),
@@ -1106,11 +1108,11 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 					return errors.Wrapf(err, "failed to json marshal zones")
 				}
 
-				placeholders["{ROUTE53_ZONES}"] = base64.RawURLEncoding.EncodeToString(dat)
+				placeholders["{"+ENV_KEY_ROUTE53_ZONES+"}"] = base64.RawURLEncoding.EncodeToString(dat)
 
 				// When no Elastic Load Balance is used, tasks need to be able to directly update the Route 53 records.
 				if targetService.AwsElbLoadBalancer == nil {
-					placeholders["{ROUTE53_UPDATE_TASK_IPS}"] = "true"
+					placeholders["{"+ENV_KEY_ROUTE53_UPDATE_TASK_IPS+"}"] = "true"
 				}
 			}
 
@@ -1207,7 +1209,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 				taskDefInput.ContainerDefinitions[0].Name = aws.String(targetService.ServiceName)
 			}
 			if taskDefInput.ContainerDefinitions[0].Image == nil || *taskDefInput.ContainerDefinitions[0].Image == "" {
-				taskDefInput.ContainerDefinitions[0].Image = aws.String(releaseImage)
+				taskDefInput.ContainerDefinitions[0].Image = aws.String(targetService.ReleaseImage)
 			}
 		}
 
