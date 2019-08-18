@@ -24,7 +24,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
-	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/servicediscovery"
@@ -92,6 +91,11 @@ type DeployService struct {
 // 10. Wait for AWS ECS service to enter a stable state.
 func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *DeployService) error {
 
+	err := SetupDeploymentEnv(log, cfg)
+	if err != nil {
+		return err
+	}
+
 	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, cfg.Env)
 
 	r, err := regexp.Compile(`^(\d+)`)
@@ -119,7 +123,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 
 	startTime := time.Now()
 
-	vpcId := *cfg.AwsEc2Vpc.result.VpcId
+	vpcId := cfg.AwsEc2Vpc.VpcId
 	subnetIds := cfg.AwsEc2Vpc.subnetIds
 	securityGroupIds := []string{*cfg.AwsEc2SecurityGroup.result.GroupId}
 
@@ -1330,57 +1334,15 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		// application logs in cloudwatch.
 		if (taskDefInput.ExecutionRoleArn == nil || *taskDefInput.ExecutionRoleArn == "") && targetService.AwsEcsExecutionRole != nil {
 
-			svc := iam.New(cfg.AwsSession())
-
-			roleName := targetService.AwsEcsExecutionRole.RoleName
-
-			log.Printf("\t\tAppend ExecutionRoleArn to task definition input for role %s.", roleName)
-
 			// Find or create role for ExecutionRoleArn.
-			res, err := svc.GetRole(&iam.GetRoleInput{
-				RoleName: aws.String(roleName),
-			})
+			role, err := SetupIamRole(log, cfg, targetService.AwsEcsExecutionRole, targetService.AwsEcsExecutionRole.AttachRolePolicyArns...)
 			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
-					return errors.Wrapf(err, "Failed to find task role '%s'", roleName)
-				}
+				return err
 			}
-
-			var role *iam.Role
-			if res.Role != nil {
-				role = res.Role
-				log.Printf("\t\t\tFound role '%s'", *role.Arn)
-			} else {
-				input, err := targetService.AwsEcsExecutionRole.Input()
-				if err != nil {
-					return err
-				}
-
-				// If no role was found, create one.
-				res, err := svc.CreateRole(input)
-				if err != nil {
-					return errors.Wrapf(err, "Failed to create task role '%s'", roleName)
-				}
-				role = res.Role
-
-				log.Printf("\t\t\tCreated role '%s'", *role.Arn)
-			}
-			targetService.AwsEcsExecutionRole.result = role
 
 			// Update the task definition with the execution role ARN.
+			log.Printf("\tAppend ExecutionRoleArn to task definition input for role %s.", *role.RoleName)
 			taskDefInput.ExecutionRoleArn = role.Arn
-
-			// Ensure all the defined policies for the role are attached.
-			for _, policyArn := range targetService.AwsEcsExecutionRole.AttachRolePolicyArns {
-				_, err = svc.AttachRolePolicy(&iam.AttachRolePolicyInput{
-					PolicyArn: aws.String(policyArn),
-					RoleName:  aws.String(roleName),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to attach policy '%s' to task role '%s'", policyArn, roleName)
-				}
-				log.Printf("\t\t\t\tAttached Policy '%s'", policyArn)
-			}
 
 			log.Printf("\t%s\tExecutionRoleArn updated.\n", Success)
 		}
@@ -1389,69 +1351,16 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		// like S3, SQS, etc then those permissions would need to be covered by the TaskRole.
 		if (taskDefInput.TaskRoleArn == nil || *taskDefInput.TaskRoleArn == "") && targetService.AwsEcsTaskRole != nil {
 
-			svc := iam.New(cfg.AwsSession())
-
 			// Find or create role for TaskRoleArn.
-			{
-
-				roleName := targetService.AwsEcsTaskRole.RoleName
-
-				log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", roleName)
-
-				res, err := svc.GetRole(&iam.GetRoleInput{
-					RoleName: aws.String(roleName),
-				})
-				if err != nil {
-					if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
-						return errors.Wrapf(err, "Failed to find task role '%s'", roleName)
-					}
-				}
-
-				var role *iam.Role
-				if res.Role != nil {
-					role = res.Role
-					log.Printf("\t\t\tFound role '%s'", *role.Arn)
-				} else {
-					input, err := targetService.AwsEcsTaskRole.Input()
-					if err != nil {
-						return err
-					}
-
-					// If no role was found, create one.
-					res, err := svc.CreateRole(input)
-					if err != nil {
-						return errors.Wrapf(err, "Failed to create task role '%s'", roleName)
-					}
-					role = res.Role
-
-					log.Printf("\t\t\tCreated role '%s'", *role.Arn)
-
-					//_, err = svc.UpdateAssumeRolePolicy(&iam.UpdateAssumeRolePolicyInput{
-					//	PolicyDocument: ,
-					//	RoleName:       aws.String(roleName),
-					//})
-					//if err != nil {
-					//	return errors.Wrapf(err, "failed to create task role '%s'", roleName)
-					//}
-				}
-				targetService.AwsEcsTaskRole.result = role
-
-				// Update the task definition with the task role ARN.
-				taskDefInput.TaskRoleArn = role.Arn
-
-				// Use the default policy defined for the entire project for all services and functions.
-				policyArn := *cfg.AwsIamPolicy.result.Arn
-
-				_, err = svc.AttachRolePolicy(&iam.AttachRolePolicyInput{
-					PolicyArn: aws.String(policyArn),
-					RoleName:  aws.String(roleName),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to attach policy '%s' to task role '%s'", policyArn, roleName)
-				}
-
-				log.Printf("\t%s\tTaskRoleArn updated.\n", Success)
+			// Use the default policy defined for the entire project for all services and functions.
+			role, err := SetupIamRole(log, cfg, targetService.AwsEcsTaskRole, *cfg.AwsIamPolicy.result.Arn)
+			if err != nil {
+				return err
 			}
+
+			// Update the task definition with the task role ARN.
+			log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", *role.RoleName)
+			taskDefInput.TaskRoleArn = role.Arn
 		}
 
 		log.Println("\tRegister new task definition.")

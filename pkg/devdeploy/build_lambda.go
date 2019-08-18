@@ -10,12 +10,12 @@ import (
 // BuildService defines the details needed to build a service using docker.
 type BuildLambda struct {
 	// Required flags.
-	FuncName       string `validate:"required" example:"web-api"`
-	Dockerfile     string `validate:"required" example:"./cmd/web-api/Dockerfile"`
-	BuildDir       string `validate:"required"`
-	ReleaseTag     string `validate:"required"`
-	LambdaS3Key    string `validate:"required"`
-	LambdaS3Bucket string `validate:"required"`
+	FuncName     string `validate:"required" example:"web-api"`
+	Dockerfile   string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+	BuildDir     string `validate:"required"`
+	ReleaseTag   string `validate:"required"`
+	CodeS3Key    string `validate:"required"`
+	CodeS3Bucket string `validate:"required"`
 
 	// Optional flags.
 	DockerBuildContext string `validate:"omitempty" example:"."`
@@ -47,8 +47,8 @@ func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *BuildLamb
 	// Ensure the bucket used to store the lambda function exists.
 	s3Buckets := []*AwsS3Bucket{cfg.AwsS3BucketPublic, cfg.AwsS3BucketPrivate}
 	for _, s3Bucket := range s3Buckets {
-		if s3Bucket != nil && s3Bucket.BucketName == targetFunc.LambdaS3Bucket {
-			err = SetupS3Buckets(cfg, s3Bucket)
+		if s3Bucket != nil && s3Bucket.BucketName == targetFunc.CodeS3Bucket {
+			err = SetupS3Buckets(log, cfg, s3Bucket)
 			if err != nil {
 				return err
 			}
@@ -63,8 +63,8 @@ func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *BuildLamb
 		ReleaseImage: filepath.Join(cfg.ProjectName, targetFunc.FuncName) + ":" + targetFunc.ReleaseTag,
 
 		IsLambda:       true,
-		LambdaS3Key:    targetFunc.LambdaS3Key,
-		LambdaS3Bucket: targetFunc.LambdaS3Bucket,
+		LambdaS3Key:    targetFunc.CodeS3Key,
+		LambdaS3Bucket: targetFunc.CodeS3Bucket,
 
 		BuildDir:           targetFunc.BuildDir,
 		Dockerfile:         targetFunc.Dockerfile,

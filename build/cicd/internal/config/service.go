@@ -3,12 +3,13 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/ecs"
 	"log"
+	"os"
 	"path/filepath"
 
 	"geeks-accelerator/oss/devops/pkg/devdeploy"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 )
@@ -285,52 +286,163 @@ func (ctx *ServiceContext) Deploy(log *log.Logger, cfg *devdeploy.Config) (*devd
 		srv.AwsEcsService.DeploymentMaximumPercent = 200
 	}
 
-	// Read the defined json task definition for the service.
-	dat, err := devdeploy.EcsReadTaskDefinition(ctx.ServiceDir, cfg.Env)
-	if err != nil {
-		return srv, err
+	portMappings := []*ecs.PortMapping{
+		&ecs.PortMapping{
+			HostPort:      aws.Int64(80),
+			Protocol:      aws.String("tcp"),
+			ContainerPort: aws.Int64(80),
+		},
+	}
+	if ctx.EnableHTTPS && !ctx.EnableElb {
+		portMappings = append(portMappings, &ecs.PortMapping{
+			HostPort:      aws.Int64(443),
+			Protocol:      aws.String("tcp"),
+			ContainerPort: aws.Int64(443),
+		})
 	}
 
-	// JSON decode the task definition.
-	taskDef, err := devdeploy.ParseTaskDefinitionInput(dat)
-	if err != nil {
-		return srv, err
+	baseEnvVars := []*ecs.KeyValuePair{
+		&ecs.KeyValuePair{
+			Name:  aws.String("AWS_REGION"),
+			Value: aws.String(cfg.AwsCredentials.Region),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("AWS_USE_ROLE"),
+			Value: aws.String("true"),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("AWSLOGS_GROUP"),
+			Value: aws.String(srv.AwsCloudWatchLogGroup.LogGroupName),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("ECS_CLUSTER"),
+			Value: aws.String(srv.AwsEcsCluster.ClusterName),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("ECS_SERVICE"),
+			Value: aws.String(srv.AwsEcsService.ServiceName),
+		},
+
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_COMMIT_REF_NAME"),
+			Value: aws.String(os.Getenv("CI_COMMIT_REF_NAME")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_COMMIT_SHORT_SHA"),
+			Value: aws.String(os.Getenv("CI_COMMIT_SHORT_SHA")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_COMMIT_SHA"),
+			Value: aws.String(os.Getenv("CI_COMMIT_SHA")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_COMMIT_TAG"),
+			Value: aws.String(os.Getenv("CI_COMMIT_TAG")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_JOB_ID"),
+			Value: aws.String(os.Getenv("CI_JOB_ID")),
+		},
+
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_JOB_URL"),
+			Value: aws.String("https://gitlab.com/geeks-accelerator/oss/saas-starter-kit/-/jobs/" + os.Getenv("CI_JOB_URL")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_PIPELINE_ID"),
+			Value: aws.String(os.Getenv("CI_PIPELINE_ID")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("CI_PIPELINE_URL"),
+			Value: aws.String("https://gitlab.com/geeks-accelerator/oss/saas-starter-kit/pipelines/" + os.Getenv("CI_PIPELINE_ID")),
+		},
+		&ecs.KeyValuePair{
+			Name:  aws.String("ECS_ENABLE_CONTAINER_METADATA"),
+			Value: aws.String("true"),
+		},
 	}
 
 	// AwsEcsTaskDefinition defines the details for registering a new ECS task definition.
 	srv.AwsEcsTaskDefinition = &devdeploy.AwsEcsTaskDefinition{
-		RegisterInput: taskDef,
+		RegisterInput: &ecs.RegisterTaskDefinitionInput{
+			Family:           aws.String("asdff"),
+			ExecutionRoleArn: aws.String("asdff"),
+			TaskRoleArn:      aws.String("asdff"),
+			NetworkMode:      aws.String("awsvpc"),
+			ContainerDefinitions: []*ecs.ContainerDefinition{
+
+				&ecs.ContainerDefinition{
+					Name:      aws.String(ctx.Name),
+					Image:     aws.String("{RELEASE_IMAGE}"),
+					Essential: aws.Bool(true),
+					LogConfiguration: &ecs.LogConfiguration{
+						LogDriver: aws.String("awslogs"),
+						Options: map[string]*string{
+							"awslogs-group":         aws.String(srv.AwsCloudWatchLogGroup.LogGroupName),
+							"awslogs-region":        aws.String(cfg.AwsCredentials.Region),
+							"awslogs-stream-prefix": aws.String("ecs"),
+						},
+					},
+					PortMappings:      portMappings,
+					Cpu:               aws.Int64(128),
+					MemoryReservation: aws.Int64(128),
+					Environment:       baseEnvVars,
+					/*
+						{"name": "WEB_APP_HTTP_HOST", "value": "{HTTP_HOST}"},
+						{"name": "WEB_APP_HTTPS_HOST", "value": "{HTTPS_HOST}"},
+						{"name": "WEB_APP_SERVICE_PROJECT", "value": "{APP_PROJECT}"},
+						{"name": "WEB_APP_SERVICE_BASE_URL", "value": "{APP_BASE_URL}"},
+						{"name": "WEB_APP_SERVICE_HOST_NAMES", "value": "{HOST_NAMES}"},
+						{"name": "WEB_APP_SERVICE_ENABLE_HTTPS", "value": "{HTTPS_ENABLED}"},
+						{"name": "WEB_APP_SERVICE_STATICFILES_S3_ENABLED", "value": "{STATIC_FILES_S3_ENABLED}"},
+						{"name": "WEB_APP_SERVICE_STATICFILES_S3_PREFIX", "value": "{STATIC_FILES_S3_PREFIX}"},
+						{"name": "WEB_APP_SERVICE_STATICFILES_CLOUDFRONT_ENABLED", "value": "{STATIC_FILES_CLOUDFRONT_ENABLED}"},
+						{"name": "WEB_APP_SERVICE_STATICFILES_IMG_RESIZE_ENABLED", "value": "{STATIC_FILES_IMG_RESIZE_ENABLED}"},
+						{"name": "WEB_APP_SERVICE_EMAIL_SENDER", "value": "{EMAIL_SENDER}"},
+						{"name": "WEB_APP_SERVICE_WEB_API_BASE_URL", "value": "{WEB_API_BASE_URL}"},
+						{"name": "WEB_APP_REDIS_HOST", "value": "{CACHE_HOST}"},
+						{"name": "WEB_APP_DB_HOST", "value": "{DB_HOST}"},
+						{"name": "WEB_APP_DB_USER", "value": "{DB_USER}"},
+						{"name": "WEB_APP_DB_PASS", "value": "{DB_PASS}"},
+						{"name": "WEB_APP_DB_DATABASE", "value": "{DB_DATABASE}"},
+						{"name": "WEB_APP_DB_DRIVER", "value": "{DB_DRIVER}"},
+						{"name": "WEB_APP_DB_DISABLE_TLS", "value": "{DB_DISABLE_TLS}"},
+						{"name": "WEB_APP_AUTH_USE_AWS_SECRET_MANAGER", "value": "true"},
+						{"name": "WEB_APP_AUTH_AWS_SECRET_ID", "value": "auth-{ECS_SERVICE}"},
+						{"name": "WEB_APP_AWS_S3_BUCKET_PRIVATE", "value": "{AWS_S3_BUCKET_PRIVATE}"},
+						{"name": "WEB_APP_AWS_S3_BUCKET_PUBLIC", "value": "{AWS_S3_BUCKET_PUBLIC}"},
+						{"name": "ROUTE53_UPDATE_TASK_IPS", "value": "{ROUTE53_UPDATE_TASK_IPS}"},
+						{"name": "ROUTE53_ZONES", "value": "{ROUTE53_ZONES}"},
+					*/
+					HealthCheck: &ecs.HealthCheck{
+						Retries: aws.Int64(3),
+						Command: aws.StringSlice([]string{
+							"CMD-SHELL",
+							"curl -f http://localhost/ping || exit 1",
+						}),
+						Timeout:     aws.Int64(5),
+						Interval:    aws.Int64(60),
+						StartPeriod: aws.Int64(60),
+					},
+					Ulimits: []*ecs.Ulimit{
+						&ecs.Ulimit{
+							Name:      aws.String("nofile"),
+							SoftLimit: aws.Int64(987654),
+							HardLimit: aws.Int64(999999),
+						},
+					},
+				},
+			},
+			RequiresCompatibilities: aws.StringSlice([]string{"FARGATE"}),
+		},
 		UpdatePlaceholders: func(placeholders map[string]string) error {
 
 			// Try to find the Datadog API key, this value is optional.
 			// If Datadog API key is not specified, then integration with Datadog for observability will not be active.
 			{
-				// Load Datadog API key which can be either stored in an environment variable or in AWS Secrets Manager.
-				// 1. Check env vars for [DEV|STAGE|PROD]_DD_API_KEY and DD_API_KEY
-				datadogApiKey := devdeploy.GetTargetEnv(cfg.Env, "DD_API_KEY")
-
-				// 2. Check AWS Secrets Manager for datadog entry prefixed with target environment.
-				if datadogApiKey == "" {
-					prefixedSecretId := cfg.SecretID("datadog/api-key")
-					var err error
-					datadogApiKey, err = devdeploy.GetAwsSecretValue(cfg.AwsCredentials, prefixedSecretId)
-					if err != nil {
-						if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
-							return err
-						}
-					}
-				}
-
-				// 3. Check AWS Secrets Manager for Datadog entry.
-				if datadogApiKey == "" {
-					secretId := "DATADOG"
-					var err error
-					datadogApiKey, err = devdeploy.GetAwsSecretValue(cfg.AwsCredentials, secretId)
-					if err != nil {
-						if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
-							return err
-						}
-					}
+				datadogApiKey, err := getDatadogApiKey(cfg)
+				if err != nil {
+					return err
 				}
 
 				if datadogApiKey != "" {
@@ -379,7 +491,7 @@ func BuildServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCrede
 		srvCtx.ReleaseTag = releaseTag
 	}
 
-	buildSrv, err := srvCtx.Build(log, noCache, noPush)
+	details, err := srvCtx.Build(log, noCache, noPush)
 	if err != nil {
 		return err
 	}
@@ -396,7 +508,7 @@ func BuildServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCrede
 		commitRef = srvCtx.ReleaseTag
 	}
 
-	buildSrv.BuildArgs = map[string]string{
+	details.BuildArgs = map[string]string{
 		"service_path": servicePath,
 		"commit_ref":   commitRef,
 	}
@@ -408,8 +520,45 @@ func BuildServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCrede
 		}
 		log.Printf("BuildServiceForTargetEnv : config : %v\n", string(cfgJSON))
 
+		detailsJSON, err := json.MarshalIndent(details, "", "    ")
+		if err != nil {
+			log.Fatalf("BuildServiceForTargetEnv : Marshalling details to JSON : %+v", err)
+		}
+		log.Printf("BuildServiceForTargetEnv : details : %v\n", string(detailsJSON))
+
 		return nil
 	}
 
-	return devdeploy.BuildServiceForTargetEnv(log, cfg, buildSrv)
+	return devdeploy.BuildServiceForTargetEnv(log, cfg, details)
+}
+
+// DeployServiceForTargetEnv executes the build commands for a target service.
+func DeployServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCredentials, targetEnv Env, serviceName, releaseTag string, dryRun bool) error {
+
+	cfgCtx, err := NewConfigContext(targetEnv, awsCredentials)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := cfgCtx.Config(log)
+	if err != nil {
+		return err
+	}
+
+	srvCtx, err := NewServiceContext(serviceName, cfg)
+	if err != nil {
+		return err
+	}
+
+	// Override the release tag if set.
+	if releaseTag != "" {
+		srvCtx.ReleaseTag = releaseTag
+	}
+
+	details, err := srvCtx.Deploy(log, cfg)
+	if err != nil {
+		return err
+	}
+
+	return devdeploy.DeployServiceToTargetEnv(log, cfg, details)
 }

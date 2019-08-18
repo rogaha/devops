@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/elasticache"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/iam"
+	"github.com/aws/aws-sdk-go/service/lambda"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/servicediscovery"
@@ -701,6 +702,11 @@ type AwsRdsDBInstance struct {
 	// Engine is a required field
 	Engine string `type:"string" required:"true"`
 
+	// The version number of the database engine to use.
+	//
+	// For a list of valid engine versions, use the DescribeDBEngineVersions action.
+	EngineVersion *string `type:"string"`
+
 	// The name for the master user.
 	//
 	// Amazon Aurora
@@ -827,6 +833,7 @@ func (m *AwsRdsDBInstance) Input(securityGroupIds []string) (*rds.CreateDBInstan
 		DBInstanceIdentifier:    aws.String(m.DBInstanceIdentifier),
 		DBName:                  aws.String(m.DBName),
 		Engine:                  aws.String(m.Engine),
+		EngineVersion:           m.EngineVersion,
 		MasterUsername:          aws.String(m.MasterUsername),
 		MasterUserPassword:      aws.String(m.MasterUserPassword),
 		Port:                    aws.Int64(m.Port),
@@ -1615,9 +1622,183 @@ func (m *AwsSdService) Input(namespaceId string) (*servicediscovery.CreateServic
 	return input, nil
 }
 
-// DeployFunction .......
-type DeployFunction struct {
-	EnableLambdaVPC bool `validate:"omitempty"`
+// AwsLambdaFunction defines the details needed to create an lambda function.
+type AwsLambdaFunction struct {
 
-	FuncName string `validate:"required"`
+	// The name of the Lambda function.
+	//
+	// The length constraint applies only to the full ARN. If you specify only the
+	// function name, it is limited to 64 characters in length.
+	FunctionName string `min:"1" type:"string" required:"true"`
+
+	// A description of the function.
+	Description string `type:"string"`
+
+	// The name of the method within your code that Lambda calls to execute your
+	// function. The format includes the file name. It can also include namespaces
+	// and other qualifiers, depending on the runtime. For more information, see
+	// Programming Model (https://docs.aws.amazon.com/lambda/latest/dg/programming-model-v2.html).
+	Handler string `type:"string" required:"true"`
+
+	// The amount of memory that your function has access to. Increasing the function's
+	// memory also increases its CPU allocation. The default value is 128 MB. The
+	// value must be a multiple of 64 MB.
+	MemorySize int64 `min:"128" type:"integer"`
+
+	// The Amazon Resource Name (ARN) of the function's execution role.
+	Role string `type:"string" required:"true"`
+
+	// The identifier of the function's runtime (https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html).
+	Runtime string `type:"string" required:"true" enum:"Runtime"`
+
+	// The amount of time that Lambda allows a function to run before stopping it.
+	// The default is 3 seconds. The maximum allowed value is 900 seconds.
+	Timeout *int64 `min:"1" type:"integer"`
+
+	// Environment variables that are accessible from function code during execution.
+	Environment map[string]string `type:"map" sensitive:"true"`
+
+	// The metadata that you apply to the service to help you categorize and organize
+	// them. Each tag consists of a key and an optional value, both of which you
+	// define. When a service is deleted, the tags are deleted as well. Tag keys
+	// can have a maximum character length of 128 characters, and tag values can
+	// have a maximum length of 256 characters.
+	Tags []Tag `type:"list"`
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *lambda.CreateFunctionInput) error `json:"-"`
+
+	// Optional to provide additional details to the update code input.
+	PreUpdateCode func(input *lambda.UpdateFunctionCodeInput) error `json:"-"`
+
+	// Optional to provide additional details to the update configuration input.
+	PreUpdateConfiguration func(input *lambda.UpdateFunctionConfigurationInput) error `json:"-"`
+
+	// Optional to update the Environment before create function or updateConfiguration is executed.
+	UpdateEnvironment func(vars map[string]string) error
+
+	// contains filtered or unexported fields
+	result *lambda.FunctionConfiguration
+}
+
+// CreateInput returns the AWS input for lambda.CreateFunction.
+func (m *AwsLambdaFunction) CreateInput(codeS3Bucket, codeS3Key string, subnetIds, securityGroupIds []string, enableVPC bool) (*lambda.CreateFunctionInput, error) {
+
+	input := &lambda.CreateFunctionInput{
+		FunctionName: aws.String(m.FunctionName),
+		Description:  aws.String(m.Description),
+		Handler:      aws.String(m.Handler),
+		MemorySize:   aws.Int64(m.MemorySize),
+		Role:         aws.String(m.Role),
+		Runtime:      aws.String(m.Runtime),
+		Timeout:      m.Timeout,
+		Code: &lambda.FunctionCode{
+			S3Bucket: aws.String(codeS3Bucket),
+			S3Key:    aws.String(codeS3Key),
+		},
+	}
+
+	if m.UpdateEnvironment != nil {
+		if m.Environment == nil {
+			m.Environment = make(map[string]string)
+		}
+		if err := m.UpdateEnvironment(m.Environment); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(m.Environment) > 0 {
+		input.Environment = &lambda.Environment{
+			Variables: make(map[string]*string),
+		}
+		for k, v := range m.Environment {
+			input.Environment.Variables[k] = aws.String(v)
+		}
+	}
+
+	if enableVPC {
+		input.VpcConfig = &lambda.VpcConfig{
+			SubnetIds:        aws.StringSlice(subnetIds),
+			SecurityGroupIds: aws.StringSlice(securityGroupIds),
+		}
+	}
+
+	input.Tags = make(map[string]*string)
+	for _, t := range m.Tags {
+		input.Tags[t.Key] = aws.String(t.Value)
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// UpdateCodeInput returns the AWS input for lambda.UpdateFunctionCodeInput.
+func (m *AwsLambdaFunction) UpdateCodeInput(codeS3Bucket, codeS3Key string) (*lambda.UpdateFunctionCodeInput, error) {
+
+	input := &lambda.UpdateFunctionCodeInput{
+		FunctionName: aws.String(m.FunctionName),
+		Publish:      aws.Bool(true),
+		S3Bucket:     aws.String(codeS3Bucket),
+		S3Key:        aws.String(codeS3Key),
+	}
+
+	if m.PreUpdateCode != nil {
+		if err := m.PreUpdateCode(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// UpdateConfigurationInput returns the AWS input for lambda.UpdateFunctionConfigurationInput.
+func (m *AwsLambdaFunction) UpdateConfigurationInput(subnetIds, securityGroupIds []string, enableVPC bool) (*lambda.UpdateFunctionConfigurationInput, error) {
+
+	input := &lambda.UpdateFunctionConfigurationInput{
+		FunctionName: aws.String(m.FunctionName),
+		Description:  aws.String(m.Description),
+		Handler:      aws.String(m.Handler),
+		MemorySize:   aws.Int64(m.MemorySize),
+		Role:         aws.String(m.Role),
+		Runtime:      aws.String(m.Runtime),
+		Timeout:      m.Timeout,
+	}
+
+	if m.UpdateEnvironment != nil {
+		if m.Environment == nil {
+			m.Environment = make(map[string]string)
+		}
+		if err := m.UpdateEnvironment(m.Environment); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(m.Environment) > 0 {
+		input.Environment = &lambda.Environment{
+			Variables: make(map[string]*string),
+		}
+		for k, v := range m.Environment {
+			input.Environment.Variables[k] = aws.String(v)
+		}
+	}
+
+	if enableVPC {
+		input.VpcConfig = &lambda.VpcConfig{
+			SubnetIds:        aws.StringSlice(subnetIds),
+			SecurityGroupIds: aws.StringSlice(securityGroupIds),
+		}
+	}
+
+	if m.PreUpdateConfiguration != nil {
+		if err := m.PreUpdateConfiguration(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }

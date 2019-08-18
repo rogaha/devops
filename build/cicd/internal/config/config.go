@@ -9,8 +9,10 @@ import (
 
 	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 )
@@ -321,7 +323,6 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 		Port:                    5432,
 		DBInstanceClass:         "db.t2.small",
 		AllocatedStorage:        20,
-		CharacterSetName:        aws.String("UTF8"),
 		PubliclyAccessible:      false,
 		BackupRetentionPeriod:   aws.Int64(7),
 		AutoMinorVersionUpgrade: true,
@@ -427,6 +428,39 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 	}
 
 	return cfg, nil
+}
+
+// getDatadogApiKey tries to find the datadog api key from env variable or AWS Secrets Manager.
+func getDatadogApiKey(cfg *devdeploy.Config) (string, error) {
+	// Load Datadog API key which can be either stored in an environment variable or in AWS Secrets Manager.
+	// 1. Check env vars for [DEV|STAGE|PROD]_DD_API_KEY and DD_API_KEY
+	apiKey := devdeploy.GetTargetEnv(cfg.Env, "DD_API_KEY")
+
+	// 2. Check AWS Secrets Manager for datadog entry prefixed with target environment.
+	if apiKey == "" {
+		prefixedSecretId := cfg.SecretID("datadog")
+		var err error
+		apiKey, err = devdeploy.GetAwsSecretValue(cfg.AwsCredentials, prefixedSecretId)
+		if err != nil {
+			if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
+				return "", err
+			}
+		}
+	}
+
+	// 3. Check AWS Secrets Manager for Datadog entry.
+	if apiKey == "" {
+		secretId := "DATADOG"
+		var err error
+		apiKey, err = devdeploy.GetAwsSecretValue(cfg.AwsCredentials, secretId)
+		if err != nil {
+			if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
+				return "", err
+			}
+		}
+	}
+
+	return apiKey, nil
 }
 
 // getCommitRef returns a string that will be used by go build to replace main.go:build constant.

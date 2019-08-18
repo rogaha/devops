@@ -139,10 +139,71 @@ func main() {
 				},
 			},
 		},
+
+		// deploy command for services and functions.
+		{
+			Name:    "deploy",
+			Aliases: []string{"b"},
+			Usage:   "deploy a service or function",
+			Subcommands: []cli.Command{
+				{
+					Name:  "service",
+					Usage: "deploy a service",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:     "name, n",
+							Required: true,
+						},
+						cli.StringFlag{
+							Name:  "release-tag, tag",
+							Usage: "target environment",
+						},
+						cli.BoolFlag{
+							Name:  "dry-run",
+							Usage: "print out the build details",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						targetEnv := c.GlobalString("env")
+						serviceName := c.String("name")
+						releaseTag := c.String("release-tag")
+						dryRun := c.Bool("dry-run")
+
+						return config.DeployServiceForTargetEnv(log, awsCredentials, targetEnv, serviceName, releaseTag, dryRun)
+					},
+				},
+				{
+					Name:  "function",
+					Usage: "deploy a function",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:     "name, n",
+							Required: true,
+						},
+						cli.StringFlag{
+							Name:  "release-tag, tag",
+							Usage: "target environment",
+						},
+						cli.BoolFlag{
+							Name:  "dry-run",
+							Usage: "print out the build details",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						targetEnv := c.GlobalString("env")
+						funcName := c.String("name")
+						releaseTag := c.String("release-tag")
+						dryRun := c.Bool("dry-run")
+
+						return config.DeployFunctionForTargetEnv(log, awsCredentials, targetEnv, funcName, releaseTag, dryRun)
+					},
+				},
+			},
+		},
 	}
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%+v", err)
 	}
 }

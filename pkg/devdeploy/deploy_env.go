@@ -44,126 +44,10 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 
 	// Step 1: Find or create the AWS IAM policy.
 	{
-		svc := iam.New(cfg.AwsSession())
-
-		policyName := cfg.AwsIamPolicy.PolicyName
-
-		log.Printf("\tFind default service policy %s.", policyName)
-
-		var policy *iam.Policy
-		err := svc.ListPoliciesPages(&iam.ListPoliciesInput{}, func(res *iam.ListPoliciesOutput, lastPage bool) bool {
-			for _, p := range res.Policies {
-				if *p.PolicyName == policyName {
-					policy = p
-					return false
-				}
-			}
-
-			return !lastPage
-		})
+		_, err := SetupIamPolicy(log, cfg, cfg.AwsIamPolicy)
 		if err != nil {
-			return errors.Wrap(err, "Failed to list IAM policies")
+			return err
 		}
-
-		if policy != nil {
-			log.Printf("\t\t\tFound policy '%s' versionId '%s'", *policy.Arn, *policy.DefaultVersionId)
-
-			res, err := svc.GetPolicyVersion(&iam.GetPolicyVersionInput{
-				PolicyArn: policy.Arn,
-				VersionId: policy.DefaultVersionId,
-			})
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
-					return errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
-				}
-			}
-
-			// The policy document returned in this structure is URL-encoded compliant with
-			// RFC 3986 (https://tools.ietf.org/html/rfc3986). You can use a URL decoding
-			// method to convert the policy back to plain JSON text.
-			curJson, err := url.QueryUnescape(*res.PolicyVersion.Document)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to url unescape policy document - %s", string(*res.PolicyVersion.Document))
-			}
-
-			// Compare policy documents and add any missing actions for each statement by matching Sid.
-			var curDoc AwsIamPolicyDocument
-			err = json.Unmarshal([]byte(curJson), &curDoc)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to json decode policy document - %s", string(curJson))
-			}
-
-			var updateDoc bool
-			for _, baseStmt := range cfg.AwsIamPolicy.PolicyDocument.Statement {
-				var found bool
-				for curIdx, curStmt := range curDoc.Statement {
-					if baseStmt.Sid != curStmt.Sid {
-						continue
-					}
-
-					found = true
-
-					for _, baseAction := range baseStmt.Action {
-						var hasAction bool
-						for _, curAction := range curStmt.Action {
-							if baseAction == curAction {
-								hasAction = true
-								break
-							}
-						}
-
-						if !hasAction {
-							log.Printf("\t\t\t\tAdded new action %s for '%s'", curStmt.Sid)
-							curStmt.Action = append(curStmt.Action, baseAction)
-							curDoc.Statement[curIdx] = curStmt
-							updateDoc = true
-						}
-					}
-				}
-
-				if !found {
-					log.Printf("\t\t\t\tAdded new statement '%s'", baseStmt.Sid)
-					curDoc.Statement = append(curDoc.Statement, baseStmt)
-					updateDoc = true
-				}
-			}
-
-			if updateDoc {
-				dat, err := json.Marshal(curDoc)
-				if err != nil {
-					return errors.Wrap(err, "Failed to json encode policy document")
-				}
-
-				res, err := svc.CreatePolicyVersion(&iam.CreatePolicyVersionInput{
-					PolicyArn:      policy.Arn,
-					PolicyDocument: aws.String(string(dat)),
-					SetAsDefault:   aws.Bool(true),
-				})
-				if err != nil {
-					if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
-						return errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
-					}
-				}
-				policy.DefaultVersionId = res.PolicyVersion.VersionId
-			}
-
-		} else {
-			input, err := cfg.AwsIamPolicy.Input()
-			if err != nil {
-				return err
-			}
-
-			// If no repository was found, create one.
-			res, err := svc.CreatePolicy(input)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to create task policy '%s'", policyName)
-			}
-			policy = res.Policy
-
-			log.Printf("\t\t\tCreated policy '%s'", *res.Policy.Arn)
-		}
-
-		cfg.AwsIamPolicy.result = policy
 
 		log.Printf("\t%s\tConfigured default service policy.\n", Success)
 	}
@@ -172,7 +56,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 	{
 		log.Println("\tS3 - Setup Buckets")
 
-		err := SetupS3Buckets(cfg, cfg.AwsS3BucketPrivate, cfg.AwsS3BucketPublic)
+		err := SetupS3Buckets(log, cfg, cfg.AwsS3BucketPrivate, cfg.AwsS3BucketPublic)
 		if err != nil {
 			return err
 		}
@@ -336,7 +220,12 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		// Find all the security groups and then parse the group name to get the Id of the security group.
 		var runnerSgId string
 		err := svc.DescribeSecurityGroupsPages(&ec2.DescribeSecurityGroupsInput{
-			GroupNames: aws.StringSlice([]string{securityGroupName, cfg.GitlabRunnerEc2SecurityGroupName}),
+			Filters: []*ec2.Filter{
+				&ec2.Filter{
+					Name:   aws.String("group-name"),
+					Values: aws.StringSlice([]string{securityGroupName, cfg.GitlabRunnerEc2SecurityGroupName}),
+				},
+			},
 		}, func(res *ec2.DescribeSecurityGroupsOutput, lastPage bool) bool {
 			for _, s := range res.SecurityGroups {
 				if *s.GroupName == securityGroupName {
@@ -350,6 +239,46 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidGroup.NotFound" {
 				return errors.Wrapf(err, "Failed to find security group '%s'", securityGroupName)
+			}
+		}
+
+		if runnerSgId == "" {
+			runngerSg := &AwsEc2SecurityGroup{
+				GroupName:   cfg.GitlabRunnerEc2SecurityGroupName,
+				Description: "Gitlab runners for running CICD.",
+
+				// A list of cost allocation tags to be added to this resource.
+				Tags: cfg.AwsEc2SecurityGroup.Tags,
+			}
+
+			input, err := runngerSg.Input(cfg.AwsEc2Vpc.VpcId)
+			if err != nil {
+				return err
+			}
+
+			// If no security group was found, create one.
+			createRes, err := svc.CreateSecurityGroup(input)
+			if err != nil {
+				return errors.Wrapf(err, "Failed to create security group '%s'", cfg.GitlabRunnerEc2SecurityGroupName)
+			}
+			runnerSgId = *createRes.GroupId
+
+			ingressInputs := []*ec2.AuthorizeSecurityGroupIngressInput{
+				// Allow all services in the security group to access other services.
+				&ec2.AuthorizeSecurityGroupIngressInput{
+					SourceSecurityGroupName: aws.String(cfg.GitlabRunnerEc2SecurityGroupName),
+					GroupId:                 aws.String(runnerSgId),
+				},
+			}
+
+			// Add all the default ingress to the security group.
+			for _, ingressInput := range ingressInputs {
+				_, err = svc.AuthorizeSecurityGroupIngress(ingressInput)
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
+						return errors.Wrapf(err, "Failed to add ingress for security group '%s'", securityGroupName)
+					}
+				}
 			}
 		}
 
@@ -485,16 +414,16 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		}
 
 		// TODO: Tag cache cluster, ARN for the cache cluster when it is not readily available.
-		_, err = svc.AddTagsToResource(&elasticache.AddTagsToResourceInput{
-			ResourceName: aws.String(cacheClusterId),
-			Tags: []*elasticache.Tag{
-				{Key: aws.String(AwsTagNameProject), Value: aws.String(cfg.ProjectName)},
-				{Key: aws.String(AwsTagNameEnv), Value: aws.String(cfg.Env)},
-			},
-		})
-		if err != nil {
-			return errors.Wrapf(err, "Failed to tag cache cluster '%s'", cacheClusterId)
-		}
+		//_, err = svc.AddTagsToResource(&elasticache.AddTagsToResourceInput{
+		//	ResourceName: aws.String(cacheClusterArn),
+		//	Tags: []*elasticache.Tag{
+		//		{Key: aws.String(AwsTagNameProject), Value: aws.String(cfg.ProjectName)},
+		//		{Key: aws.String(AwsTagNameEnv), Value: aws.String(cfg.Env)},
+		//	},
+		//})
+		//if err != nil {
+		//	return errors.Wrapf(err, "Failed to tag cache cluster '%s'", cacheClusterId)
+		//}
 
 		// If there are custom cache group parameters set, then create a new group and keep them modified.
 		if len(cfg.AwsElasticCacheCluster.ParameterNameValues) > 0 {
@@ -762,8 +691,8 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		if cfg.AwsRdsDBInstance.result == nil {
 
 			if cfg.DBConnInfo != nil && cfg.DBConnInfo.Pass != "" {
-				cfg.AwsRdsDBCluster.MasterUserPassword = cfg.DBConnInfo.User
-				cfg.AwsRdsDBCluster.MasterUserPassword = cfg.DBConnInfo.Pass
+				cfg.AwsRdsDBInstance.MasterUserPassword = cfg.DBConnInfo.User
+				cfg.AwsRdsDBInstance.MasterUserPassword = cfg.DBConnInfo.Pass
 			}
 
 			if cfg.AwsRdsDBCluster != nil {
@@ -775,7 +704,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 					// Only set the password right now,
 					// all other configuration details will be set after the database instance is created.
 					cfg.DBConnInfo = &DBConnInfo{
-						Pass: cfg.AwsRdsDBCluster.MasterUserPassword,
+						Pass: cfg.AwsRdsDBInstance.MasterUserPassword,
 					}
 
 					// Json encode the db details to be stored as secret text.
@@ -814,7 +743,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 			log.Printf("\t\tFound: %s", *cfg.AwsRdsDBInstance.result.DBInstanceArn)
 		}
 
-		dbInstance := *cfg.AwsRdsDBInstance.result
+		dbInstance := cfg.AwsRdsDBInstance.result
 
 		// The status of the instance.
 		log.Printf("\t\t\tStatus: %s", *dbInstance.DBInstanceStatus)
@@ -828,7 +757,16 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 			if err != nil {
 				return errors.Wrapf(err, "Failed to wait for database instance '%s' to enter available state", dBInstanceIdentifier)
 			}
-			dbInstance.DBInstanceStatus = aws.String("available")
+
+			// Try to find an existing DB instance with the same identifier.
+			descRes, err := svc.DescribeDBInstances(&rds.DescribeDBInstancesInput{
+				DBInstanceIdentifier: aws.String(dBInstanceIdentifier),
+			})
+			if err != nil {
+				return errors.Wrapf(err, "Failed to describe database instance '%s'", dBInstanceIdentifier)
+			} else if len(descRes.DBInstances) > 0 {
+				dbInstance = descRes.DBInstances[0]
+			}
 		}
 
 		// If a database cluster is not defined, update the database details with the current instance.
@@ -868,14 +806,200 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 			}
 		}
 
+		cfg.AwsRdsDBInstance.result = dbInstance
+
 		log.Printf("\t%s\tDB Instance available\n", Success)
 	}
 
 	return nil
 }
 
+func SetupIamPolicy(log *log.Logger, cfg *Config, targetPolicy *AwsIamPolicy) (*iam.Policy, error) {
+
+	svc := iam.New(cfg.AwsSession())
+
+	policyName := targetPolicy.PolicyName
+
+	log.Printf("\tFind default service policy %s.", policyName)
+
+	var policy *iam.Policy
+	err := svc.ListPoliciesPages(&iam.ListPoliciesInput{}, func(res *iam.ListPoliciesOutput, lastPage bool) bool {
+		for _, p := range res.Policies {
+			if *p.PolicyName == policyName {
+				policy = p
+				return false
+			}
+		}
+
+		return !lastPage
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to list IAM policies")
+	}
+
+	if policy != nil {
+		log.Printf("\t\t\tFound policy '%s' versionId '%s'", *policy.Arn, *policy.DefaultVersionId)
+
+		res, err := svc.GetPolicyVersion(&iam.GetPolicyVersionInput{
+			PolicyArn: policy.Arn,
+			VersionId: policy.DefaultVersionId,
+		})
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
+				return nil, errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
+			}
+		}
+
+		// The policy document returned in this structure is URL-encoded compliant with
+		// RFC 3986 (https://tools.ietf.org/html/rfc3986). You can use a URL decoding
+		// method to convert the policy back to plain JSON text.
+		curJson, err := url.QueryUnescape(*res.PolicyVersion.Document)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to url unescape policy document - %s", string(*res.PolicyVersion.Document))
+		}
+
+		// Compare policy documents and add any missing actions for each statement by matching Sid.
+		var curDoc AwsIamPolicyDocument
+		err = json.Unmarshal([]byte(curJson), &curDoc)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to json decode policy document - %s", string(curJson))
+		}
+
+		var updateDoc bool
+		for _, baseStmt := range targetPolicy.PolicyDocument.Statement {
+			var found bool
+			for curIdx, curStmt := range curDoc.Statement {
+				if baseStmt.Sid != curStmt.Sid {
+					continue
+				}
+
+				found = true
+
+				for _, baseAction := range baseStmt.Action {
+					var hasAction bool
+					for _, curAction := range curStmt.Action {
+						if baseAction == curAction {
+							hasAction = true
+							break
+						}
+					}
+
+					if !hasAction {
+						log.Printf("\t\t\t\tAdded new action %s for '%s'", curStmt.Sid)
+						curStmt.Action = append(curStmt.Action, baseAction)
+						curDoc.Statement[curIdx] = curStmt
+						updateDoc = true
+					}
+				}
+			}
+
+			if !found {
+				log.Printf("\t\t\t\tAdded new statement '%s'", baseStmt.Sid)
+				curDoc.Statement = append(curDoc.Statement, baseStmt)
+				updateDoc = true
+			}
+		}
+
+		if updateDoc {
+			dat, err := json.Marshal(curDoc)
+			if err != nil {
+				return nil, errors.Wrap(err, "Failed to json encode policy document")
+			}
+
+			res, err := svc.CreatePolicyVersion(&iam.CreatePolicyVersionInput{
+				PolicyArn:      policy.Arn,
+				PolicyDocument: aws.String(string(dat)),
+				SetAsDefault:   aws.Bool(true),
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
+					return nil, errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
+				}
+			}
+			policy.DefaultVersionId = res.PolicyVersion.VersionId
+		}
+
+	} else {
+		input, err := targetPolicy.Input()
+		if err != nil {
+			return nil, err
+		}
+
+		// If no repository was found, create one.
+		res, err := svc.CreatePolicy(input)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create task policy '%s'", policyName)
+		}
+		policy = res.Policy
+
+		log.Printf("\t\t\tCreated policy '%s'", *res.Policy.Arn)
+	}
+
+	targetPolicy.result = policy
+
+	return policy, nil
+}
+
+func SetupIamRole(log *log.Logger, cfg *Config, targetRole *AwsIamRole, policyArns ...string) (*iam.Role, error) {
+	svc := iam.New(cfg.AwsSession())
+
+	roleName := targetRole.RoleName
+
+	res, err := svc.GetRole(&iam.GetRoleInput{
+		RoleName: aws.String(roleName),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
+			return nil, errors.Wrapf(err, "Failed to find task role '%s'", roleName)
+		}
+	}
+
+	var role *iam.Role
+	if res.Role != nil {
+		role = res.Role
+		log.Printf("\t\t\tFound role '%s'", *role.Arn)
+	} else {
+		input, err := targetRole.Input()
+		if err != nil {
+			return nil, err
+		}
+
+		// If no role was found, create one.
+		res, err := svc.CreateRole(input)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create task role '%s'", roleName)
+		}
+		role = res.Role
+
+		log.Printf("\t\t\tCreated role '%s'", *role.Arn)
+
+		//_, err = svc.UpdateAssumeRolePolicy(&iam.UpdateAssumeRolePolicyInput{
+		//	PolicyDocument: ,
+		//	RoleName:       aws.String(roleName),
+		//})
+		//if err != nil {
+		//	return errors.Wrapf(err, "failed to create task role '%s'", roleName)
+		//}
+	}
+	targetRole.result = role
+
+	for _, policyArn := range policyArns {
+		_, err = svc.AttachRolePolicy(&iam.AttachRolePolicyInput{
+			PolicyArn: aws.String(policyArn),
+			RoleName:  aws.String(roleName),
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to attach policy '%s' to task role '%s'", policyArn, roleName)
+		}
+
+		log.Printf("\t\t\tRole attached policy %s.\n", policyArn)
+	}
+
+	return role, nil
+}
+
 // SetupS3Buckets handles configuring s3 buckets.
-func SetupS3Buckets(cfg *Config, s3Buckets ...*AwsS3Bucket) error {
+func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) error {
 	svc := s3.New(cfg.AwsSession())
 
 	for _, s3Bucket := range s3Buckets {
