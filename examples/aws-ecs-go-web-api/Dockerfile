@@ -1,0 +1,86 @@
+# LAYER: BASE
+FROM golang:1.12.6-alpine3.9 AS build_base_golang
+
+LABEL maintainer="lee@geeksinthewoods.com"
+
+RUN apk --no-cache add \
+            git build-base gcc
+
+# Change dir to project base.
+WORKDIR $GOPATH/src/geeks-accelerator/oss/devops
+
+# Enable go modules.
+ENV GO111MODULE="on"
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+RUN go get github.com/pilu/fresh
+
+
+# LAYER: DEV - All the project go files.
+FROM build_base_golang AS dev
+
+ARG service
+ARG service_path=./examples/${service}
+ARG commit_ref=-
+
+# Copy shared packages.
+COPY internal ./internal
+COPY pkg ./pkg
+
+# Copy cmd specific packages.
+COPY ${service_path} ${service_path}
+
+# Copy the global templates.
+ADD fresh-auto-reload.conf /runner.conf
+
+WORKDIR ${service_path}
+
+ADD ${service_path}/static /static
+ENV STATIC_DIR=/static
+
+ADD ${service_path}/templates /templates
+ENV TEMPLATE_DIR=/templates
+
+ENTRYPOINT ["fresh", "-c", "/runner.conf"]
+
+
+# LAYER: TESTER - Run all the unittets for the project.
+FROM dev AS tester
+
+# Run the tests for the service being built.
+RUN go test -v ./...
+
+
+
+# LAYER: BUILDER - Do the golang build to produce a static binary.
+FROM dev AS builder
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.build=${commit_ref}" -a -installsuffix nocgo -o /gosrv .
+
+
+
+# FINAL LAYER - Entrypoint for the docker container image.
+FROM alpine:3.9
+
+RUN apk --update --no-cache add \
+            tzdata ca-certificates curl openssl
+
+COPY --from=builder /gosrv /
+
+COPY --from=dev /static /static
+ENV STATIC_DIR=/static
+
+COPY --from=dev /templates /templates
+ENV TEMPLATE_DIR=/templates
+
+ARG service
+ENV SERVICE_NAME $service
+
+ARG env="dev"
+ENV ENV $env
+
+ARG gogc="20"
+ENV GOGC $gogc
+
+ENTRYPOINT ["/gosrv"]

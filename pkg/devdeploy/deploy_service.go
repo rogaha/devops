@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,9 +47,8 @@ type DeployService struct {
 
 	ReleaseTag string `validate:"required"`
 
-	StaticFilesDir             string `validate:"omitempty" example:"./cmd/web-api"`
-	StaticFilesS3Prefix        string `validate:"omitempty"`
-	StaticFilesImgResizeEnable bool   `validate:"omitempty"`
+	StaticFilesDir      string `validate:"omitempty" example:"./cmd/web-api"`
+	StaticFilesS3Prefix string `validate:"omitempty"`
 
 	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
@@ -68,9 +66,6 @@ type DeployService struct {
 	// AwsEcsExecutionRole defines the name of the iam task role for ecs task and the detailed needed to create doesn't exist.
 	// This role is used by the task itself for calling other AWS services.
 	AwsEcsTaskRole *AwsIamRole `validate:"required"`
-
-	// AwsEcsTaskPolicy defines the name of the iam policy that will be attached to the task role.
-	AwsEcsTaskPolicy *AwsIamPolicy `validate:"required"`
 
 	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS
 	// task.
@@ -95,9 +90,9 @@ type DeployService struct {
 // 8. Create or update the AWS ECS service.
 // 9. Sync static files to AWS S3.
 // 10. Wait for AWS ECS service to enter a stable state.
-func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetService *DeployService) error {
+func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *DeployService) error {
 
-	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, targetEnv.Env)
+	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, cfg.Env)
 
 	r, err := regexp.Compile(`^(\d+)`)
 	if err != nil {
@@ -124,16 +119,16 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 	startTime := time.Now()
 
-	vpcId := *targetEnv.AwsEc2Vpc.result.VpcId
-	subnetIds := targetEnv.AwsEc2Vpc.subnetIds
-	securityGroupIds := []string{*targetEnv.AwsEc2SecurityGroup.result.GroupId}
+	vpcId := *cfg.AwsEc2Vpc.result.VpcId
+	subnetIds := cfg.AwsEc2Vpc.subnetIds
+	securityGroupIds := []string{*cfg.AwsEc2SecurityGroup.result.GroupId}
 
 	// Step 1: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
 	var zoneArecNames = map[string][]string{}
 	if targetService.ServiceHostPrimary != "" {
 		log.Println("\tRoute 53 - Get or create hosted zones.")
 
-		svc := route53.New(targetEnv.AwsSession())
+		svc := route53.New(cfg.AwsSession())
 
 		log.Println("\t\tList all hosted zones.")
 		var zones []*route53.HostedZone
@@ -276,7 +271,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	if targetService.AwsSdPrivateDnsNamespace != nil {
 		log.Println("\tService Discovery - Get or Create Namespace")
 
-		svc := servicediscovery.New(targetEnv.AwsSession())
+		svc := servicediscovery.New(cfg.AwsSession())
 
 		namespaceName := targetService.AwsSdPrivateDnsNamespace.Name
 
@@ -430,7 +425,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	{
 		log.Println("\tCloudWatch Logs - Get or Create Log Group")
 
-		svc := cloudwatchlogs.New(targetEnv.AwsSession())
+		svc := cloudwatchlogs.New(cfg.AwsSession())
 
 		logGroupName := targetService.AwsCloudWatchLogGroup.LogGroupName
 
@@ -463,7 +458,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		if targetService.EnableHTTPS {
 			log.Println("\tACM - Find Elastic Load Balancer")
 
-			svc := acm.New(targetEnv.AwsSession())
+			svc := acm.New(cfg.AwsSession())
 
 			err := svc.ListCertificatesPages(&acm.ListCertificatesInput{},
 				func(res *acm.ListCertificatesOutput, lastPage bool) bool {
@@ -552,7 +547,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			log.Printf("\t\t\tStatus: %s", *cert.Status)
 
 			if *cert.Status == "PENDING_VALIDATION" {
-				svc := route53.New(targetEnv.AwsSession())
+				svc := route53.New(cfg.AwsSession())
 
 				log.Println("\t\t\tList all hosted zones.")
 
@@ -622,7 +617,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 		log.Println("EC2 - Find Elastic Load Balancer")
 		{
-			svc := elbv2.New(targetEnv.AwsSession())
+			svc := elbv2.New(cfg.AwsSession())
 
 			loadBalancerName := targetService.AwsElbLoadBalancer.Name
 
@@ -837,7 +832,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				log.Println("Ensure Load Balancer DNS name exists for hosted zones.")
 				log.Printf("\t\tDNSName: '%s'.\n", *elb.DNSName)
 
-				svc := route53.New(targetEnv.AwsSession())
+				svc := route53.New(cfg.AwsSession())
 
 				for zoneId, aNames := range zoneArecNames {
 					log.Printf("\tChange zone '%s'.\n", zoneId)
@@ -884,7 +879,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		if targetService.EnableHTTPS {
 			log.Println("\tEC2 - Enable HTTPS port 443 for security group.")
 
-			svc := ec2.New(targetEnv.AwsSession())
+			svc := ec2.New(cfg.AwsSession())
 
 			// Enable services to be publicly available via HTTPS port 443.
 			_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
@@ -892,12 +887,12 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				CidrIp:     aws.String("0.0.0.0/0"),
 				FromPort:   aws.Int64(443),
 				ToPort:     aws.Int64(443),
-				GroupId:    targetEnv.AwsEc2SecurityGroup.result.GroupId,
+				GroupId:    cfg.AwsEc2SecurityGroup.result.GroupId,
 			})
 			if err != nil {
 				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
 					return errors.Wrapf(err, "Failed to add ingress for security group '%s'",
-						targetEnv.AwsEc2SecurityGroup.GroupName)
+						cfg.AwsEc2SecurityGroup.GroupName)
 				}
 			}
 		}
@@ -907,7 +902,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	{
 		log.Println("ECS - Get or Create Cluster")
 
-		svc := ecs.New(targetEnv.AwsSession())
+		svc := ecs.New(cfg.AwsSession())
 
 		clusterName := targetService.AwsEcsCluster.ClusterName
 
@@ -966,7 +961,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	{
 		log.Println("\tECS - Register task definition")
 
-		releaseImage := *targetEnv.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
+		releaseImage := *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
 
 		// Update the placeholders for the supplied task definition.
 		var taskDefInput *ecs.RegisterTaskDefinitionInput
@@ -979,16 +974,16 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				"{RELEASE_IMAGE}":         releaseImage,
 				"{ECS_CLUSTER}":           targetService.AwsEcsCluster.ClusterName,
 				"{ECS_SERVICE}":           targetService.AwsEcsService.ServiceName,
-				"{AWS_REGION}":            targetEnv.AwsCredentials.Region,
+				"{AWS_REGION}":            cfg.AwsCredentials.Region,
 				"{AWS_LOGS_GROUP}":        targetService.AwsCloudWatchLogGroup.LogGroupName,
-				"{AWS_S3_BUCKET_PRIVATE}": targetEnv.AwsS3BucketPrivate.BucketName,
-				"{AWS_S3_BUCKET_PUBLIC}":  targetEnv.AwsS3BucketPublic.BucketName,
-				"{ENV}":                   targetEnv.Env,
+				"{AWS_S3_BUCKET_PRIVATE}": cfg.AwsS3BucketPrivate.BucketName,
+				"{AWS_S3_BUCKET_PUBLIC}":  cfg.AwsS3BucketPublic.BucketName,
+				"{ENV}":                   cfg.Env,
 				"{HTTP_HOST}":             "0.0.0.0:80",
 				"{HTTPS_HOST}":            "", // Not enabled by default
 				"{HTTPS_ENABLED}":         "false",
 
-				"{APP_PROJECT}":  targetEnv.ProjectName,
+				"{APP_PROJECT}":  cfg.ProjectName,
 				"{APP_BASE_URL}": "", // Not set by default, requires a hostname to be defined.
 				"{HOST_PRIMARY}": targetService.ServiceHostPrimary,
 				"{HOST_NAMES}":   strings.Join(targetService.ServiceHostNames, ","),
@@ -1049,24 +1044,19 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			}
 
 			// Static files served from CloudFront.
-			if targetEnv.AwsS3BucketPublic.CloudFront != nil {
+			if cfg.AwsS3BucketPublic.CloudFront != nil {
 				placeholders["{STATIC_FILES_CLOUDFRONT_ENABLED}"] = "true"
 			}
 
-			// Support for resizing static images files to be responsive.
-			if targetService.StaticFilesImgResizeEnable {
-				placeholders["{STATIC_FILES_IMG_RESIZE_ENABLED}"] = "true"
-			}
-
 			// When db is set, update the placeholders.
-			if targetEnv.DBConnInfo != nil {
-				placeholders["{DB_HOST}"] = targetEnv.DBConnInfo.Host
-				placeholders["{DB_USER}"] = targetEnv.DBConnInfo.User
-				placeholders["{DB_PASS}"] = targetEnv.DBConnInfo.Pass
-				placeholders["{DB_DATABASE}"] = targetEnv.DBConnInfo.Database
-				placeholders["{DB_DRIVER}"] = targetEnv.DBConnInfo.Driver
+			if cfg.DBConnInfo != nil {
+				placeholders["{DB_HOST}"] = cfg.DBConnInfo.Host
+				placeholders["{DB_USER}"] = cfg.DBConnInfo.User
+				placeholders["{DB_PASS}"] = cfg.DBConnInfo.Pass
+				placeholders["{DB_DATABASE}"] = cfg.DBConnInfo.Database
+				placeholders["{DB_DRIVER}"] = cfg.DBConnInfo.Driver
 
-				if targetEnv.DBConnInfo.DisableTLS {
+				if cfg.DBConnInfo.DisableTLS {
 					placeholders["{DB_DISABLE_TLS}"] = "true"
 				} else {
 					placeholders["{DB_DISABLE_TLS}"] = "false"
@@ -1074,8 +1064,8 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			}
 
 			// When cache cluster is set, set the host and port.
-			if targetEnv.AwsElasticCacheCluster != nil {
-				cacheCluster := targetEnv.AwsElasticCacheCluster.result
+			if cfg.AwsElasticCacheCluster != nil {
+				cacheCluster := cfg.AwsElasticCacheCluster.result
 
 				var cacheHost string
 				if cacheCluster.ConfigurationEndpoint != nil {
@@ -1340,7 +1330,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		// application logs in cloudwatch.
 		if (taskDefInput.ExecutionRoleArn == nil || *taskDefInput.ExecutionRoleArn == "") && targetService.AwsEcsExecutionRole != nil {
 
-			svc := iam.New(targetEnv.AwsSession())
+			svc := iam.New(cfg.AwsSession())
 
 			roleName := targetService.AwsEcsExecutionRole.RoleName
 
@@ -1399,130 +1389,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		// like S3, SQS, etc then those permissions would need to be covered by the TaskRole.
 		if (taskDefInput.TaskRoleArn == nil || *taskDefInput.TaskRoleArn == "") && targetService.AwsEcsTaskRole != nil {
 
-			svc := iam.New(targetEnv.AwsSession())
-
-			// Find or create role for TaskRoleArn.
-			var policyArn string
-			{
-				policyName := targetService.AwsEcsTaskPolicy.PolicyName
-
-				log.Printf("\tFind default service policy %s.", policyName)
-
-				var policyVersionId string
-				err = svc.ListPoliciesPages(&iam.ListPoliciesInput{}, func(res *iam.ListPoliciesOutput, lastPage bool) bool {
-					for _, p := range res.Policies {
-						if *p.PolicyName == policyName {
-							policyArn = *p.Arn
-							policyVersionId = *p.DefaultVersionId
-							return false
-						}
-					}
-
-					return !lastPage
-				})
-				if err != nil {
-					return errors.Wrap(err, "Failed to list IAM policies")
-				}
-
-				if policyArn != "" {
-					log.Printf("\t\t\tFound policy '%s' versionId '%s'", policyArn, policyVersionId)
-
-					res, err := svc.GetPolicyVersion(&iam.GetPolicyVersionInput{
-						PolicyArn: aws.String(policyArn),
-						VersionId: aws.String(policyVersionId),
-					})
-					if err != nil {
-						if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
-							return errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, policyVersionId)
-						}
-					}
-
-					// The policy document returned in this structure is URL-encoded compliant with
-					// RFC 3986 (https://tools.ietf.org/html/rfc3986). You can use a URL decoding
-					// method to convert the policy back to plain JSON text.
-					curJson, err := url.QueryUnescape(*res.PolicyVersion.Document)
-					if err != nil {
-						return errors.Wrapf(err, "Failed to url unescape policy document - %s", string(*res.PolicyVersion.Document))
-					}
-
-					// Compare policy documents and add any missing actions for each statement by matching Sid.
-					var curDoc AwsIamPolicyDocument
-					err = json.Unmarshal([]byte(curJson), &curDoc)
-					if err != nil {
-						return errors.Wrapf(err, "Failed to json decode policy document - %s", string(curJson))
-					}
-
-					var updateDoc bool
-					for _, baseStmt := range targetService.AwsEcsTaskPolicy.PolicyDocument.Statement {
-						var found bool
-						for curIdx, curStmt := range curDoc.Statement {
-							if baseStmt.Sid != curStmt.Sid {
-								continue
-							}
-
-							found = true
-
-							for _, baseAction := range baseStmt.Action {
-								var hasAction bool
-								for _, curAction := range curStmt.Action {
-									if baseAction == curAction {
-										hasAction = true
-										break
-									}
-								}
-
-								if !hasAction {
-									log.Printf("\t\t\t\tAdded new action %s for '%s'", curStmt.Sid)
-									curStmt.Action = append(curStmt.Action, baseAction)
-									curDoc.Statement[curIdx] = curStmt
-									updateDoc = true
-								}
-							}
-						}
-
-						if !found {
-							log.Printf("\t\t\t\tAdded new statement '%s'", baseStmt.Sid)
-							curDoc.Statement = append(curDoc.Statement, baseStmt)
-							updateDoc = true
-						}
-					}
-
-					if updateDoc {
-						dat, err := json.Marshal(curDoc)
-						if err != nil {
-							return errors.Wrap(err, "Failed to json encode policy document")
-						}
-
-						_, err = svc.CreatePolicyVersion(&iam.CreatePolicyVersionInput{
-							PolicyArn:      aws.String(policyArn),
-							PolicyDocument: aws.String(string(dat)),
-							SetAsDefault:   aws.Bool(true),
-						})
-						if err != nil {
-							if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
-								return errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, policyVersionId)
-							}
-						}
-					}
-				} else {
-					input, err := targetService.AwsEcsTaskPolicy.Input()
-					if err != nil {
-						return err
-					}
-
-					// If no repository was found, create one.
-					res, err := svc.CreatePolicy(input)
-					if err != nil {
-						return errors.Wrapf(err, "Failed to create task policy '%s'", policyName)
-					}
-
-					policyArn = *res.Policy.Arn
-
-					log.Printf("\t\t\tCreated policy '%s'", policyArn)
-				}
-
-				log.Printf("\t%s\tConfigured default service policy.\n", Success)
-			}
+			svc := iam.New(cfg.AwsSession())
 
 			// Find or create role for TaskRoleArn.
 			{
@@ -1572,6 +1439,9 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 				// Update the task definition with the task role ARN.
 				taskDefInput.TaskRoleArn = role.Arn
 
+				// Use the default policy defined for the entire project for all services and functions.
+				policyArn := *cfg.AwsIamPolicy.result.Arn
+
 				_, err = svc.AttachRolePolicy(&iam.AttachRolePolicyInput{
 					PolicyArn: aws.String(policyArn),
 					RoleName:  aws.String(roleName),
@@ -1586,7 +1456,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 		log.Println("\tRegister new task definition.")
 		{
-			svc := ecs.New(targetEnv.AwsSession())
+			svc := ecs.New(cfg.AwsSession())
 
 			// Registers a new task.
 			res, err := svc.RegisterTaskDefinition(taskDefInput)
@@ -1608,7 +1478,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	// Step 7: Find the existing ECS service and check if it needs to be recreated
 	var ecsService *ecs.Service
 	{
-		svc := ecs.New(targetEnv.AwsSession())
+		svc := ecs.New(cfg.AwsSession())
 
 		ecsServiceName := targetService.AwsEcsService.ServiceName
 
@@ -1742,7 +1612,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 	if ecsService != nil && *ecsService.Status != "INACTIVE" {
 		log.Println("\tECS - Update Service")
 
-		svc := ecs.New(targetEnv.AwsSession())
+		svc := ecs.New(cfg.AwsSession())
 
 		input, err := targetService.AwsEcsService.UpdateInput(targetService.AwsEcsCluster.ClusterName, *taskDef.TaskDefinitionArn)
 		if err != nil {
@@ -1761,7 +1631,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		// If not service exists on ECS, then create it.
 		log.Println("\tECS - Create Service")
 		{
-			svc := ecs.New(targetEnv.AwsSession())
+			svc := ecs.New(cfg.AwsSession())
 
 			input, err := targetService.AwsEcsService.CreateInput(targetService.AwsEcsCluster.ClusterName, *taskDef.TaskDefinitionArn, subnetIds, securityGroupIds, ecsELBs, sdService)
 			if err != nil {
@@ -1797,19 +1667,19 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			return errors.Wrapf(err, "Static directory '%s' does not exist.", staticDir)
 		}
 
-		err := SyncPublicS3Files(targetEnv.AwsSession(),
-			targetEnv.AwsS3BucketPublic.BucketName,
+		err := SyncPublicS3Files(cfg.AwsSession(),
+			cfg.AwsS3BucketPublic.BucketName,
 			targetService.StaticFilesS3Prefix,
 			staticDir)
 		if err != nil {
 			return errors.Wrapf(err, "Failed to sync static files from %s to s3://%s/%s",
 				staticDir,
-				targetEnv.AwsS3BucketPublic.BucketName,
+				cfg.AwsS3BucketPublic.BucketName,
 				targetService.StaticFilesS3Prefix)
 		}
 
 		log.Printf("\t%s\tFiles uploaded to s3://%s/%s.\n", Success,
-			targetEnv.AwsS3BucketPublic.BucketName,
+			cfg.AwsS3BucketPublic.BucketName,
 			targetService.StaticFilesS3Prefix)
 	}
 
@@ -1819,13 +1689,13 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 		// Helper method to get the logs from cloudwatch for a specific task ID.
 		getTaskLogs := func(taskId string) ([]string, error) {
-			if targetEnv.AwsS3BucketPrivate == nil || targetEnv.AwsS3BucketPrivate.BucketName == "" ||
+			if cfg.AwsS3BucketPrivate == nil || cfg.AwsS3BucketPrivate.BucketName == "" ||
 				targetService.AwsCloudWatchLogGroup == nil || targetService.AwsCloudWatchLogGroup.LogGroupName == "" {
 				// No private S3 bucket defined so unable to export logs streams.
 				return []string{}, nil
 			}
 
-			privateBucket := targetEnv.AwsS3BucketPrivate
+			privateBucket := cfg.AwsS3BucketPrivate
 			logGroupName := targetService.AwsCloudWatchLogGroup.LogGroupName
 
 			// Stream name generated by ECS for the awslogs driver.
@@ -1839,7 +1709,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 			var downloadPrefix string
 			{
-				svc := cloudwatchlogs.New(targetEnv.AwsSession())
+				svc := cloudwatchlogs.New(cfg.AwsSession())
 
 				createRes, err := svc.CreateExportTask(&cloudwatchlogs.CreateExportTaskInput{
 					LogGroupName:        aws.String(logGroupName),
@@ -1851,7 +1721,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 					To:                aws.Int64(time.Now().UTC().AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)),
 				})
 				if err != nil {
-					return []string{}, errors.Wrapf(err, "Failed to create export task for from log group '%s' with stream name prefix '%s'", req.CloudWatchLogGroupName, logStreamName)
+					return []string{}, errors.Wrapf(err, "Failed to create export task for from log group '%s' with stream name prefix '%s'", logGroupName, logStreamName)
 				}
 				exportTaskId := *createRes.TaskId
 
@@ -1860,7 +1730,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 						TaskId: aws.String(exportTaskId),
 					})
 					if err != nil {
-						return []string{}, errors.Wrapf(err, "Failed to describe export task '%s' for from log group '%s' with stream name prefix '%s'", exportTaskId, req.CloudWatchLogGroupName, logStreamName)
+						return []string{}, errors.Wrapf(err, "Failed to describe export task '%s' for from log group '%s' with stream name prefix '%s'", exportTaskId, logGroupName, logStreamName)
 					}
 					taskStatus := *descRes.ExportTasks[0].Status.Code
 
@@ -1877,7 +1747,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 			// If downloadPrefix is set, then get logs from corresponding file for service.
 			var logLines []string
 			if downloadPrefix != "" {
-				svc := s3.New(targetEnv.AwsSession())
+				svc := s3.New(cfg.AwsSession())
 
 				var s3Keys []string
 				err := svc.ListObjectsPages(&s3.ListObjectsInput{
@@ -1927,7 +1797,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 		// Helper method to display tasks errors that failed to start while we wait for the service to stable state.
 		taskLogLines := make(map[string][]string)
 		checkTasks := func() (bool, error) {
-			svc := ecs.New(targetEnv.AwsSession())
+			svc := ecs.New(cfg.AwsSession())
 
 			clusterName := targetService.AwsEcsCluster.ClusterName
 			serviceName := targetService.AwsEcsService.ServiceName
@@ -2049,7 +1919,7 @@ func DeployServiceToTargetEnv(log *log.Logger, targetEnv *DeploymentEnv, targetS
 
 		// Use the AWS ECS method to check for the service to be stable.
 		go func() {
-			svc := ecs.New(targetEnv.AwsSession())
+			svc := ecs.New(cfg.AwsSession())
 			err := svc.WaitUntilServicesStable(&ecs.DescribeServicesInput{
 				Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
 				Services: aws.StringSlice([]string{*ecsService.ServiceArn}),

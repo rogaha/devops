@@ -115,7 +115,7 @@ type AwsEcrRepository struct {
 	MaxImages int
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *ecr.CreateRepositoryInput) error
+	PreCreate func(input *ecr.CreateRepositoryInput) error `json:"-"`
 
 	// result is an unexported field that contains Repository details.
 	result *ecr.Repository
@@ -169,7 +169,7 @@ type AwsEc2Vpc struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *ec2.CreateVpcInput) error
+	PreCreate func(input *ec2.CreateVpcInput) error `json:"-"`
 
 	// result is an unexported field that contains VPC details.
 	result    *ec2.Vpc
@@ -220,7 +220,7 @@ type AwsEc2Subnet struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *ec2.CreateSubnetInput) error
+	PreCreate func(input *ec2.CreateSubnetInput) error `json:"-"`
 }
 
 // Input returns the AWS input for ec2.CreateSubnet.
@@ -262,7 +262,7 @@ type AwsEc2SecurityGroup struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *ec2.CreateSecurityGroupInput) error
+	PreCreate func(input *ec2.CreateSecurityGroupInput) error `json:"-"`
 
 	// result is an unexported field that contains security group details.
 	result *ec2.SecurityGroup
@@ -313,7 +313,7 @@ type AwsS3Bucket struct {
 	Policy string
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *s3.CreateBucketInput) error
+	PreCreate func(input *s3.CreateBucketInput) error `json:"-"`
 
 	CloudFront *AwsS3BucketCloudFront
 }
@@ -324,7 +324,7 @@ func (m *AwsS3Bucket) Input() (*s3.CreateBucketInput, error) {
 		Bucket: aws.String(m.BucketName),
 	}
 
-	if m.LocationConstraint != nil && *m.LocationConstraint != "" {
+	if m.LocationConstraint != nil && *m.LocationConstraint != "" && *m.LocationConstraint != "us-east-1" {
 		input.CreateBucketConfiguration = &s3.CreateBucketConfiguration{
 			LocationConstraint: m.LocationConstraint,
 		}
@@ -360,7 +360,7 @@ type AwsS3BucketCloudFront struct {
 	DistributionConfig *cloudfront.DistributionConfig
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *cloudfront.CreateDistributionInput) error
+	PreCreate func(input *cloudfront.CreateDistributionInput) error `json:"-"`
 }
 
 // Input returns the AWS input for cloudfront.CreateDistribution.
@@ -473,7 +473,7 @@ type AwsElasticCacheCluster struct {
 	ParameterNameValues []AwsElasticCacheParameter `type:"list" required:"true"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *elasticache.CreateCacheClusterInput) error
+	PreCreate func(input *elasticache.CreateCacheClusterInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *elasticache.CacheCluster
@@ -608,7 +608,7 @@ type AwsRdsDBCluster struct {
 	Tags []*Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *rds.CreateDBClusterInput) error
+	PreCreate func(input *rds.CreateDBClusterInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *rds.DBCluster
@@ -814,7 +814,7 @@ type AwsRdsDBInstance struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *rds.CreateDBInstanceInput) error
+	PreCreate func(input *rds.CreateDBInstanceInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *rds.DBInstance
@@ -876,7 +876,7 @@ type AwsEcsCluster struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *ecs.CreateClusterInput) error
+	PreCreate func(input *ecs.CreateClusterInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *ecs.Cluster
@@ -998,10 +998,10 @@ type AwsEcsService struct {
 	ForceRecreate bool `validate:"omitempty"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *ecs.CreateServiceInput) error
+	PreCreate func(input *ecs.CreateServiceInput) error `json:"-"`
 
 	// Optional to provide additional details to the update input.
-	PreUpdate func(input *ecs.UpdateServiceInput) error
+	PreUpdate func(input *ecs.UpdateServiceInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *ecs.Service
@@ -1156,7 +1156,7 @@ type AwsIamRole struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *iam.CreateRoleInput) error
+	PreCreate func(input *iam.CreateRoleInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *iam.Role
@@ -1214,7 +1214,7 @@ type AwsIamPolicy struct {
 	PolicyDocument AwsIamPolicyDocument
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *iam.CreatePolicyInput) error
+	PreCreate func(input *iam.CreatePolicyInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *iam.Policy
@@ -1268,7 +1268,7 @@ type AwsCloudWatchLogGroup struct {
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *cloudwatchlogs.CreateLogGroupInput) error
+	PreCreate func(input *cloudwatchlogs.CreateLogGroupInput) error `json:"-"`
 }
 
 // Input returns the AWS input for cloudwatchlogs.CreateLogGroup.
@@ -1335,7 +1335,7 @@ type AwsElbLoadBalancer struct {
 	TargetGroup *AwsElbTargetGroup `type:"list"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *elbv2.CreateLoadBalancerInput) error
+	PreCreate func(input *elbv2.CreateLoadBalancerInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *elbv2.LoadBalancer
@@ -1464,7 +1464,7 @@ type AwsElbTargetGroup struct {
 	Matcher string `type:"string"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *elbv2.CreateTargetGroupInput) error
+	PreCreate func(input *elbv2.CreateTargetGroupInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *elbv2.TargetGroup
@@ -1516,7 +1516,7 @@ type AwsSdPrivateDnsNamespace struct {
 	Description string `type:"string"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *servicediscovery.CreatePrivateDnsNamespaceInput) error
+	PreCreate func(input *servicediscovery.CreatePrivateDnsNamespaceInput) error `json:"-"`
 
 	// The set of services for the dns namespace.
 	Service *AwsSdService `type:"list"`
@@ -1579,7 +1579,7 @@ type AwsSdService struct {
 	HealthCheckFailureThreshold int64 `min:"1" type:"integer"`
 
 	// Optional to provide additional details to the create input.
-	PreCreate func(input *servicediscovery.CreateServiceInput) error
+	PreCreate func(input *servicediscovery.CreateServiceInput) error `json:"-"`
 
 	// contains filtered or unexported fields
 	resultArn string

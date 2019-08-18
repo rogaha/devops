@@ -1,0 +1,64 @@
+# https://docs.docker.com/compose/compose-file
+# docker-compose up
+# docker-compose stop
+# docker-compose down
+version: '3.7'
+
+networks:
+  main:
+
+services:
+  postgres:
+    image: postgres:11-alpine
+    expose:
+      - "5433"
+    ports:
+      - "5433:5432"
+    networks:
+      main:
+        aliases:
+          - postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASS=postgres
+      - POSTGRES_DB=shared
+
+  redis:
+    image: redis:latest
+    expose:
+      - "6378"
+    ports:
+      - "6378:6379"
+    networks:
+      main:
+        aliases:
+          - redis
+    entrypoint: redis-server --appendonly yes
+
+  web-api:
+    image: devops/examples/aws-ecs-go-web-api:latest
+    build:
+      context: .
+      target: dev
+      dockerfile: examples/aws-ecs-go-web-api/Dockerfile
+      args:
+        service: 'aws-ecs-go-web-api'
+    volumes:
+      - ./:/go/src/gitlab.com/geeks-accelerator/oss/devops
+    ports:
+      - 4000:4000
+    networks:
+      main:
+        aliases:
+          - web-api
+    environment:
+      - WEB_API_ENV=dev
+      - WEB_API_HTTP_HOST=:4000
+      - WEB_API_SERVICE_BASE_URL=http://127.0.0.1:4000
+      - WEB_API_REDIS_HOST=redis:6379
+      - WEB_API_DB_HOST=postgres:5432
+      - WEB_API_DB_USERNAME=postgres
+      - WEB_API_DB_PASSWORD=postgres
+      - WEB_API_DB_DATABASE=shared
+      - WEB_API_DB_DISABLE_TLS=true
+      # - GODEBUG=gctrace=1

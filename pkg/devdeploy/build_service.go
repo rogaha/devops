@@ -3,7 +3,6 @@ package devdeploy
 import (
 	"encoding/base64"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/service/ecr"
@@ -13,42 +12,26 @@ import (
 
 // BuildService defines the details needed to build a service using docker.
 type BuildService struct {
-	//BuildEnv *BuildEnv `validate:"required,dive,required"`
-
 	// Required flags.
 	ServiceName string `validate:"required" example:"web-api"`
-
-	Dockerfile string `validate:"required" example:"./cmd/web-api/Dockerfile"`
-
-	ReleaseTag string `validate:"required"`
+	Dockerfile  string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+	BuildDir    string `validate:"required"`
+	ReleaseTag  string `validate:"required"`
 
 	// Optional flags.
-	CommitRef string `validate:"omitempty" example:"master@1ecfd275"`
-	BuildDir  string `validate:"omitempty" example:"."`
-	NoCache   bool   `validate:"omitempty" example:"false"`
-	NoPush    bool   `validate:"omitempty" example:"false"`
+	DockerBuildContext string `validate:"omitempty" example:"."`
+	NoCache            bool   `validate:"omitempty" example:"false"`
+	NoPush             bool   `validate:"omitempty" example:"false"`
+	BuildArgs          map[string]string
 }
 
 // BuildServiceForTargetEnv builds a service using the defined Dockerfile and pushes the release image to AWS ECR.
-func BuildServiceForTargetEnv(log *log.Logger, targetEnv *BuildEnv, targetService *BuildService) error {
+func BuildServiceForTargetEnv(log *log.Logger, cfg *Config, targetService *BuildService) error {
 
-	log.Printf("Build service %s for environment %s\n", targetService.ServiceName, targetEnv.Env)
+	log.Printf("Build service %s for environment %s\n", targetService.ServiceName, cfg.Env)
 
-	// Get the default commit ref used by main.go:build constant.
-	if targetService.CommitRef == "" {
-		if ev := os.Getenv("CI_COMMIT_TAG"); ev != "" {
-			targetService.CommitRef = "tag-" + ev
-		} else if ev := os.Getenv("CI_COMMIT_REF_NAME"); ev != "" {
-			targetService.CommitRef = "branch-" + ev
-		}
-
-		if ev := os.Getenv("CI_COMMIT_SHORT_SHA"); ev != "" {
-			targetService.CommitRef = targetService.CommitRef + "@" + ev
-		}
-
-		if targetService.CommitRef == "" {
-			targetService.CommitRef = targetService.ReleaseTag
-		}
+	if targetService.BuildDir == "" {
+		targetService.BuildDir = cfg.ProjectRoot
 	}
 
 	log.Println("\tValidate request.")
@@ -57,14 +40,19 @@ func BuildServiceForTargetEnv(log *log.Logger, targetEnv *BuildEnv, targetServic
 		return errs
 	}
 
-	releaseImage := *targetEnv.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
+	err := SetupBuildEnv(log, cfg)
+	if err != nil {
+		return err
+	}
+
+	releaseImage := *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
 	log.Printf("\tRelease image: %s", releaseImage)
 
 	var ecrDockerLoginCmd []string
 	{
 		log.Println("\tRetrieve ECR authorization token used for docker login.")
 
-		svc := ecr.New(targetEnv.AwsSession())
+		svc := ecr.New(cfg.AwsSession())
 
 		// Get the credentials necessary for logging into the AWS Elastic Container Registry
 		// made available with the AWS access key and AWS secret access keys.
@@ -93,21 +81,24 @@ func BuildServiceForTargetEnv(log *log.Logger, targetEnv *BuildEnv, targetServic
 	}
 
 	req := &BuildDockerRequest{
-		Env:         targetEnv.Env,
-		ProjectName: targetEnv.ProjectName,
+		Env:         cfg.Env,
+		ProjectName: cfg.ProjectName,
 		ServiceName: targetService.ServiceName,
 
 		ReleaseImage: releaseImage,
 
-		BuildDir:              targetEnv.ProjectRoot,
-		Dockerfile:            targetService.Dockerfile,
+		BuildDir:           targetService.BuildDir,
+		Dockerfile:         targetService.Dockerfile,
+		DockerBuildContext: targetService.DockerBuildContext,
+
 		ReleaseDockerLoginCmd: ecrDockerLoginCmd,
 
-		AwsCredentials: targetEnv.AwsCredentials,
+		AwsCredentials: cfg.AwsCredentials,
 
-		CommitRef: targetService.CommitRef,
-		NoCache:   targetService.NoCache,
-		NoPush:    targetService.NoPush,
+		NoCache: targetService.NoCache,
+		NoPush:  targetService.NoPush,
+
+		BuildArgs: targetService.BuildArgs,
 	}
 
 	return BuildDocker(log, req)

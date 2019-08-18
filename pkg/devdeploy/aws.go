@@ -174,7 +174,7 @@ func EcrPurgeImages(awsCredentials AwsCredentials, ecrRepositoryName string, max
 		return !lastPage
 	})
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to describe images for repository '%s'", req.EcrRepositoryName)
+		return nil, errors.Wrapf(err, "failed to describe images for repository '%s'", ecrRepositoryName)
 	}
 
 	// Sort the image timestamps in reverse order.

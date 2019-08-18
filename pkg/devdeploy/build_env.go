@@ -2,55 +2,23 @@ package devdeploy
 
 import (
 	"log"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ecr"
-	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
 
-// BuildEnv defines the details to setup the target environment for the project to build services and functions.
-type BuildEnv struct {
-	Env string `validate:"oneof=dev stage prod"`
-
-	// ProjectRoot should be the root directory for the project.
-	ProjectRoot string `validate:"required"`
-
-	// ProjectName will be used for prefixing AWS resources.
-	ProjectName string `validate:"required"`
-
-	// AwsCredentials defines the credentials used for deployment.
-	AwsCredentials AwsCredentials `validate:"required,dive,required"`
-
-	// AwsEcrRepository defines the name of the ECR repository and details needed to create if does not exist.
-	AwsEcrRepository *AwsEcrRepository
-}
-
-// ProjectNameCamel takes a project name and returns the camel cased version.
-func (buildEnv *BuildEnv) ProjectNameCamel() string {
-	s := strings.Replace(buildEnv.ProjectName, "_", " ", -1)
-	s = strings.Replace(s, "-", " ", -1)
-	s = strcase.ToCamel(s)
-	return s
-}
-
-// AwsSession returns the AWS session based on the defined credentials.
-func (buildEnv *BuildEnv) AwsSession() *session.Session {
-	return buildEnv.AwsCredentials.Session()
-}
-
 // SetupBuildEnv ensures all the resources for the project are setup before building a service or function. This will
 // ensure the following AWS are available for build:
 // 1. AWS ECR repository
-func SetupBuildEnv(log *log.Logger, buildEnv *BuildEnv) error {
+func SetupBuildEnv(log *log.Logger, cfg *Config) error {
 
-	log.Printf("Setup build environment %s\n", buildEnv.Env)
+	log.Printf("Setup build environment %s\n", cfg.Env)
 
 	log.Println("\tValidate request.")
-	errs := validator.New().Struct(buildEnv)
+	errs := validator.New().Struct(cfg)
 	if errs != nil {
 		return errs
 	}
@@ -59,23 +27,24 @@ func SetupBuildEnv(log *log.Logger, buildEnv *BuildEnv) error {
 	{
 		log.Println("\tECR - Get or create repository")
 
-		svc := ecr.New(buildEnv.AwsSession())
+		svc := ecr.New(cfg.AwsSession())
 
-		repositoryName := buildEnv.AwsEcrRepository.RepositoryName
+		repositoryName := cfg.AwsEcrRepository.RepositoryName
 
 		var respository *ecr.Repository
 		descRes, err := svc.DescribeRepositories(&ecr.DescribeRepositoriesInput{
 			RepositoryNames: []*string{aws.String(repositoryName)},
 		})
 		if err != nil {
-			// The repository should have been created by build or manually created and should exist at this point.
-			return errors.Wrapf(err, "Failed to describe repository '%s'.", repositoryName)
+			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != ecr.ErrCodeRepositoryNotFoundException {
+				return errors.Wrapf(err, "Failed to describe repository '%s'.", repositoryName)
+			}
 		} else if len(descRes.Repositories) > 0 {
 			respository = descRes.Repositories[0]
 		}
 
 		if respository == nil {
-			input, err := buildEnv.AwsEcrRepository.Input()
+			input, err := cfg.AwsEcrRepository.Input()
 			if err != nil {
 				return err
 			}
@@ -91,11 +60,11 @@ func SetupBuildEnv(log *log.Logger, buildEnv *BuildEnv) error {
 			log.Printf("\t\tFound: %s", *respository.RepositoryArn)
 
 			log.Println("\t\tChecking old ECR images.")
-			maxImages := buildEnv.AwsEcrRepository.MaxImages
+			maxImages := cfg.AwsEcrRepository.MaxImages
 			if maxImages == 0 || maxImages > AwsRegistryMaximumImages {
 				maxImages = AwsRegistryMaximumImages
 			}
-			delIds, err := EcrPurgeImages(buildEnv.AwsCredentials, repositoryName, maxImages)
+			delIds, err := EcrPurgeImages(cfg.AwsCredentials, repositoryName, maxImages)
 			if err != nil {
 				return err
 			}
@@ -109,7 +78,7 @@ func SetupBuildEnv(log *log.Logger, buildEnv *BuildEnv) error {
 				}
 			}
 		}
-		buildEnv.AwsEcrRepository.result = respository
+		cfg.AwsEcrRepository.result = respository
 
 		log.Printf("\t%s\tECR Respository available\n", Success)
 	}
