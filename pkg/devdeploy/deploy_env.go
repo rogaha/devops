@@ -1208,7 +1208,7 @@ func LoadModuleDetails(workDir string) (ModuleDetails, error) {
 	}
 	resp.ProjectRoot = filepath.Dir(resp.GoModFile)
 
-	resp.GoModName, err = loadGoModName(resp.GoModFile)
+	resp.GoModName, err = LoadGoModName(resp.GoModFile)
 	if err != nil {
 		return resp, err
 	}
@@ -1254,8 +1254,8 @@ func findProjectGoModFile(workDir string) (string, error) {
 	return goModFile, nil
 }
 
-// loadGoModName parses out the module name from go.mod.
-func loadGoModName(goModFile string) (string, error) {
+// LoadGoModName parses out the module name from go.mod.
+func LoadGoModName(goModFile string) (string, error) {
 	ok, err := exists(goModFile)
 	if err != nil {
 		return "", errors.WithMessage(err, "Failed to load go.mod for project")

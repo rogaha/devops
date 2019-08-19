@@ -235,6 +235,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 		log.Printf("\t\t%s\n", logCmd)
 
 		if strings.ToLower(cmd[0]) == "cd" {
+			log.Printf("\t\t\tChanging directory\n")
 			wkdir = cmd[1]
 			continue
 		}
