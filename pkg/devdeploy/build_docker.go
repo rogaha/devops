@@ -223,6 +223,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 		}
 	}
 
+	wkdir := req.BuildDir
 	for _, cmd := range cmds {
 		var logCmd string
 		if len(cmd) >= 2 && cmd[1] == "login" {
@@ -233,7 +234,12 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 
 		log.Printf("\t\t%s\n", logCmd)
 
-		err := execCmds(log, req.BuildDir, cmd)
+		if strings.ToLower(cmd[0]) == "cd" {
+			wkdir = cmd[1]
+			continue
+		}
+
+		err := execCmds(log, wkdir, cmd)
 		if err != nil {
 			if len(cmd) > 2 && cmd[1] == "pull" {
 				log.Printf("\t\t\tSkipping pull - %s\n", err.Error())
