@@ -54,20 +54,26 @@ func NewConfigContext(targetEnv Env, awsCredentials devdeploy.AwsCredentials) (*
 		AwsCredentials: awsCredentials,
 	}
 
+	// If AWS Credentials are not set and use role is not enabled, try to load the credentials from env vars.
+	if ctx.AwsCredentials.UseRole == false && ctx.AwsCredentials.AccessKeyID == "" {
+		var err error
+		ctx.AwsCredentials, err = devdeploy.GetAwsCredentialsFromEnv(ctx.Env)
+		if err != nil {
+			return nil, err
+		}
+	} else if ctx.AwsCredentials.Region == "" {
+		awsCreds, err := devdeploy.GetAwsCredentialsFromEnv(ctx.Env)
+		if err != nil {
+			return nil, err
+		}
+		ctx.AwsCredentials.Region = awsCreds.Region
+	}
+
 	return ctx, nil
 }
 
 // Config defines the details to setup the target environment for the project to build services and functions.
 func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) {
-
-	// If AWS Credentials are not set and use role is not enabled, try to load the credentials from env vars.
-	if cfgCtx.AwsCredentials.UseRole == false && cfgCtx.AwsCredentials.AccessKeyID == "" {
-		var err error
-		cfgCtx.AwsCredentials, err = devdeploy.GetAwsCredentialsFromEnv(cfgCtx.Env)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	// Init a new build target environment for the project.
 	cfg := &devdeploy.Config{
