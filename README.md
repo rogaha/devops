@@ -1,6 +1,7 @@
 # Devops 
 [![Build Status](https://gitlab.com/geeks-accelerator/oss/devops/badges/master/pipeline.svg)](https://gitlab.com/geeks-accelerator/oss/devops/pipelines) 
 [![GoDoc](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy?status.svg)](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy)
+[![Go Report Card](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops?style=flat-square)](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops)
 
 
 __Devops__ is a tool to that facilitates a continuous deployment pipeline for GitLab. 
