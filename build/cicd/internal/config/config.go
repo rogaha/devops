@@ -38,6 +38,13 @@ var (
 	Env_Prod  Env = "prod"
 )
 
+// List of env names used by main.go for help.
+var EnvNames = []Function{
+	Env_Dev,
+	Env_Stage,
+	Env_Prod,
+}
+
 // ConfigContext defines the flags for build env.
 type ConfigContext struct {
 	// Env is the target environment used for the deployment.

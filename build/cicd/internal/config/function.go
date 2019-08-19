@@ -18,8 +18,11 @@ var (
 	Function_AwsLambdaPythonDdlogs = "aws-lambda-python-ddlogs"
 )
 
-// ErrInvalidFunction occurs when no config can be determined for a function.
-var ErrInvalidFunction = errors.New("Invalid function")
+// List of function names used by main.go for help.
+var FunctionNames = []Function{
+	Function_AwsLambdaGoFunc,
+	Function_AwsLambdaPythonDdlogs,
+}
 
 // FunctionContext defines the flags for deploying a function.
 type FunctionContext struct {
@@ -192,7 +195,7 @@ func NewFunctionContext(funcName string, cfg *devdeploy.Config) (*FunctionContex
 			},
 		}
 	default:
-		return nil, errors.Wrapf(ErrInvalidFunction,
+		return nil, errors.Wrapf(devdeploy.ErrInvalidFunction,
 			"No function context defined for function '%s'",
 			funcName)
 	}

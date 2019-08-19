@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/urfave/cli"
 	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/config"
@@ -23,13 +25,19 @@ func main() {
 	// =========================================================================
 	// New CLI application.
 	app := cli.NewApp()
+	app.Name = "cicd"
+	app.Usage = "Provides build and deploy for GitLab to Amazon AWS"
+	app.Version = "1.0"
+	app.Author = "Lee Brown"
+	app.Email = "lee@geeksinthewoods.com"
 
 	// Define global CLI flags.
 	var awsCredentials devdeploy.AwsCredentials
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:     "env",
-			Usage:    "target environment, one of [dev|stage|prod]",
+			Name: "env",
+			Usage: fmt.Sprintf("target environment, one of [%s]",
+				strings.Join(config.EnvNames, ", ")),
 			Required: true,
 		},
 		cli.StringFlag{
@@ -52,7 +60,7 @@ func main() {
 		},
 		cli.BoolFlag{
 			Name:        "aws-use-role",
-			Usage:       "target environment",
+			Usage:       "Use an IAM Role else AWS Access/Secret Keys are required",
 			EnvVar:      "AWS_USE_ROLE",
 			Destination: &awsCredentials.UseRole,
 		},
@@ -70,12 +78,14 @@ func main() {
 					Usage: "build a service",
 					Flags: []cli.Flag{
 						cli.StringFlag{
-							Name:     "name, n",
+							Name: "name, n",
+							Usage: fmt.Sprintf("target service, one of [%s]",
+								strings.Join(config.ServiceNames, ", ")),
 							Required: true,
 						},
 						cli.StringFlag{
 							Name:  "release-tag, tag",
-							Usage: "target environment",
+							Usage: "optional tag to override default CI_COMMIT_SHORT_SHA",
 						},
 						cli.BoolFlag{
 							Name:  "dry-run",
@@ -106,12 +116,14 @@ func main() {
 					Usage: "build a function",
 					Flags: []cli.Flag{
 						cli.StringFlag{
-							Name:     "name, n",
+							Name: "name, n",
+							Usage: fmt.Sprintf("target function, one of [%s]",
+								strings.Join(config.FunctionNames, ", ")),
 							Required: true,
 						},
 						cli.StringFlag{
 							Name:  "release-tag, tag",
-							Usage: "target environment",
+							Usage: "optional tag to override default CI_COMMIT_SHORT_SHA",
 						},
 						cli.BoolFlag{
 							Name:  "dry-run",
@@ -143,7 +155,7 @@ func main() {
 		// deploy command for services and functions.
 		{
 			Name:    "deploy",
-			Aliases: []string{"b"},
+			Aliases: []string{"d"},
 			Usage:   "deploy a service or function",
 			Subcommands: []cli.Command{
 				{
@@ -151,16 +163,18 @@ func main() {
 					Usage: "deploy a service",
 					Flags: []cli.Flag{
 						cli.StringFlag{
-							Name:     "name, n",
+							Name: "name, n",
+							Usage: fmt.Sprintf("target service, one of [%s]",
+								strings.Join(config.ServiceNames, ", ")),
 							Required: true,
 						},
 						cli.StringFlag{
 							Name:  "release-tag, tag",
-							Usage: "target environment",
+							Usage: "optional tag to override default CI_COMMIT_SHORT_SHA",
 						},
 						cli.BoolFlag{
 							Name:  "dry-run",
-							Usage: "print out the build details",
+							Usage: "print out the deploy details",
 						},
 					},
 					Action: func(c *cli.Context) error {
@@ -177,16 +191,18 @@ func main() {
 					Usage: "deploy a function",
 					Flags: []cli.Flag{
 						cli.StringFlag{
-							Name:     "name, n",
+							Name: "name, n",
+							Usage: fmt.Sprintf("target function, one of [%s]",
+								strings.Join(config.FunctionNames, ", ")),
 							Required: true,
 						},
 						cli.StringFlag{
 							Name:  "release-tag, tag",
-							Usage: "target environment",
+							Usage: "optional tag to override default CI_COMMIT_SHORT_SHA",
 						},
 						cli.BoolFlag{
 							Name:  "dry-run",
-							Usage: "print out the build details",
+							Usage: "print out the deploy details",
 						},
 					},
 					Action: func(c *cli.Context) error {
@@ -204,7 +220,7 @@ func main() {
 		// schema command used to run database schema migrations.
 		{
 			Name:    "schema",
-			Aliases: []string{"b"},
+			Aliases: []string{"s"},
 			Usage:   "manage the database schema",
 			Subcommands: []cli.Command{
 				{
@@ -227,8 +243,7 @@ func main() {
 		},
 	}
 
-	err := app.Run(os.Args)
-	if err != nil {
+	if err := app.Run(os.Args); err != nil {
 		log.Fatalf("%+v", err)
 	}
 }

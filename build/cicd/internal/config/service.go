@@ -22,8 +22,10 @@ var (
 	Service_AwsEcsGoWebApi = "aws-ecs-go-web-api"
 )
 
-// ErrInvalidService occurs when no config can be determined for a service.
-var ErrInvalidService = errors.New("Invalid service")
+// List of service names used by main.go for help.
+var ServiceNames = []Service{
+	Service_AwsEcsGoWebApi,
+}
 
 // ServiceContext defines the flags for deploying a service.
 type ServiceContext struct {
@@ -215,7 +217,7 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 		}
 
 	default:
-		return nil, errors.Wrapf(ErrInvalidService,
+		return nil, errors.Wrapf(devdeploy.ErrInvalidService,
 			"No service context defined for service '%s'",
 			serviceName)
 	}

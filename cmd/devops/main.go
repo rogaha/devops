@@ -85,7 +85,7 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 	}
 
 	// The current import path used for the tool that will need to be replaced.
-	curImportPath := "geeks-accelerator/oss/devops/build/cicd"
+	curImportPath := "gitlab.com/geeks-accelerator/oss/devops/build/cicd"
 
 	// Load the go module details for the target project.
 	projectDetails, err := devdeploy.LoadModuleDetails(projectDir)
@@ -93,9 +93,11 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 		return err
 	}
 
+	// Determine that the new import path should be for the project that will be used by main.go to import internal/config.
 	newImportPath := filepath.Join(projectDetails.GoModName, "build/cicd")
 	log.Printf("Replacing package import '%s' with '%s'\n", curImportPath, newImportPath)
 
+	// The actual file directory new files will be copied to.
 	targetDir := filepath.Join(projectDir, "build/cicd")
 	err = os.MkdirAll(targetDir, os.ModePerm)
 	if err != nil {
@@ -103,16 +105,55 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 	}
 	log.Printf("Writing files to '%s'\n", targetDir)
 
+	// List of values that will be replaced in the files being copied.
+	replacements := map[string]string{
+		curImportPath: newImportPath,
+	}
+
+	// List of path prefixes that should be not be copied to target project.
+	var skipPaths []string
+
+	// If the project already has a schema folder, assume its what we are looking for and use that instead.
+	schemaDir := filepath.Join(projectDir, "internal/schema")
+	if _, err := os.Stat(schemaDir); err == nil {
+		curSchemaPath := filepath.Join(newImportPath, "internal/schema")
+		projectSchemaPath := filepath.Join(projectDetails.GoModName, "internal/schema")
+
+		replacements[curSchemaPath] = projectSchemaPath
+		skipPaths = append(skipPaths, "internal/schema")
+
+		log.Printf("Using project schema '%s'\n", projectSchemaPath)
+
+	}
+
+	// The current copy of the build/cicd tool will be used as the template for deploying a copy of the tool to a project.
+	// Packr is used to bundle these files when compiling the binary to make it easy for this tool to be installed
+	// without having manage templates as some external resource.
 	dir := "../../build/cicd"
 	box := packr.New("cicd", dir)
 
+	// Loop through all the files in the box and copy each one to the target project.
 	for _, f := range box.List() {
+
+		var skipFile bool
+		for _, p := range skipPaths {
+			if strings.HasPrefix(f, p) {
+				skipFile = true
+				break
+			}
+		}
+		if skipFile {
+			continue
+		}
 
 		dat, err := box.FindString(filepath.Join(dir, f))
 		if err != nil {
 			return err
 		}
-		dat = strings.Replace(dat, curImportPath, newImportPath, -1)
+
+		for k, v := range replacements {
+			dat = strings.Replace(dat, k, v, -1)
+		}
 
 		newFilePath := filepath.Join(targetDir, f)
 

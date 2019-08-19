@@ -1,4 +1,7 @@
-# Devops [![Build Status](https://gitlab.com/geeks-accelerator/oss/devops/badges/master/pipeline.svg)](https://gitlab.com/geeks-accelerator/oss/devops/pipelines)
+# Devops 
+[![Build Status](https://gitlab.com/geeks-accelerator/oss/devops/badges/master/pipeline.svg)](https://gitlab.com/geeks-accelerator/oss/devops/pipelines) 
+[![GoDoc](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy?status.svg)](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy)
+
 
 __Devops__ is a tool to that facilitates a continuous deployment pipeline for GitLab. 
 
@@ -57,7 +60,7 @@ AWS permissions.
 called `saas-starter-kit-deploy` with a defined JSON statement instead of using the visual 
 editor. The statement is rather large as each permission is granted individually. A copy of 
 the statement is stored in the repo at 
-[resources/saas-starter-kit-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/saas-starter-kit/blob/master/resources/saas-starter-kit-deploy-policy.json)
+[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
 
 3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
 called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 
