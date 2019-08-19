@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
@@ -26,6 +25,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
+	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 )

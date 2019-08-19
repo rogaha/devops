@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"geeks-accelerator/oss/devops/build/cicd/internal/schema"
-	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
@@ -19,6 +17,8 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/schema"
+	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 	ProjectNamePrefix = "gitw-"
 
 	// GitLabProjectBaseUrl is the base url used to create links to a specific CI/CD job or pipeline by ID.
-	GitLabProjectBaseUrl = "https://gitlab.com/geeks-accelerator/oss/saas-starter-kit"
+	GitLabProjectBaseUrl = "https://gitlab.com/geeks-accelerator/oss/devops"
 )
 
 // Env defines the target deployment environment.

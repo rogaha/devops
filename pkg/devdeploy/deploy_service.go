@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"geeks-accelerator/oss/devops/internal/retry"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/acm"
@@ -29,6 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/servicediscovery"
 	"github.com/bobesa/go-domain-util/domainutil"
 	"github.com/pkg/errors"
+	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 	"gopkg.in/go-playground/validator.v9"
 )
 

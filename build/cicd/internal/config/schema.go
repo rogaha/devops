@@ -4,10 +4,10 @@ import (
 	"context"
 	"log"
 
-	"geeks-accelerator/oss/devops/build/cicd/internal/schema"
-	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/schema"
+	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
 // RunSchemaMigrationsForTargetEnv executes the build commands for a target service.

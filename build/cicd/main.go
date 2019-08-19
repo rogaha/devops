@@ -4,9 +4,9 @@ import (
 	"log"
 	"os"
 
-	"geeks-accelerator/oss/devops/build/cicd/internal/config"
-	"geeks-accelerator/oss/devops/pkg/devdeploy"
 	"github.com/urfave/cli"
+	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/config"
+	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
 // service is the name of the program used for logging, tracing, etc.

@@ -3,16 +3,16 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ecs"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"geeks-accelerator/oss/devops/pkg/devdeploy"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
+	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
 // Service define the name of a service.

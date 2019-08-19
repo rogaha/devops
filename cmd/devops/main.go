@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/pkg/errors"
-	"geeks-accelerator/oss/devops/pkg/devdeploy"
-	"github.com/urfave/cli"
 	"github.com/gobuffalo/packr/v2"
+	"github.com/pkg/errors"
+	"github.com/urfave/cli"
+	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
 // service is the name of the program used for logging, tracing, etc.
@@ -40,8 +40,8 @@ func main() {
 					Usage: "copies the build/cicd tool to a target repo",
 					Flags: []cli.Flag{
 						cli.StringFlag{
-							Name:  "project",
-							Usage: "the root directory of the project",
+							Name:     "project",
+							Usage:    "the root directory of the project",
 							Required: true,
 						},
 						cli.BoolFlag{
@@ -67,11 +67,11 @@ func main() {
 }
 
 // injectBuildCicd copies the example build/cicd tool to a target repo.
-func injectBuildCicd(log *log.Logger, projectDir string, force bool) error  {
+func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 
 	// Ensure the project directory is valid.
 	stat, err := os.Stat(projectDir)
-	if err != nil  {
+	if err != nil {
 		return errors.WithMessagef(err, "Target project must be a directory")
 	} else if !stat.IsDir() {
 		return errors.Errorf("Target '%s' is not a directory")
@@ -96,7 +96,7 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error  {
 	newImportPath := filepath.Join(projectDetails.GoModName, "build/cicd")
 	log.Printf("Replacing package import '%s' with '%s'\n", curImportPath, newImportPath)
 
-	targetDir := filepath.Join(projectDir,"build/cicd")
+	targetDir := filepath.Join(projectDir, "build/cicd")
 	err = os.MkdirAll(targetDir, os.ModePerm)
 	if err != nil {
 		return errors.WithMessagef(err, "Failed to create target directory '%s'.", targetDir)
@@ -112,9 +112,9 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error  {
 		if err != nil {
 			return err
 		}
-		dat = strings.Replace(dat, curImportPath, newImportPath, - 1)
+		dat = strings.Replace(dat, curImportPath, newImportPath, -1)
 
-		newFilePath := filepath.Join(targetDir, f )
+		newFilePath := filepath.Join(targetDir, f)
 
 		if _, err := os.Stat(newFilePath); err != nil {
 			if !os.IsNotExist(err) {
@@ -129,7 +129,7 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error  {
 			}
 
 			// Write the new file.
-			err = ioutil.WriteFile(newFilePath, []byte( dat), 0644)
+			err = ioutil.WriteFile(newFilePath, []byte(dat), 0644)
 			if err != nil {
 				return errors.WithMessagef(err, "Failed to write file '%s'", newFilePath)
 			}
