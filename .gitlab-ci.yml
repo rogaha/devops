@@ -69,7 +69,7 @@ aws-ecs-go-web-api:build:dev:
   variables:
     TARGET_ENV: 'dev'
     TARGET_TYPE: 'service'
-    TARGET_REF: ''aws-ecs-go-web-api'
+    TARGET_REF: 'aws-ecs-go-web-api'
     AWS_USE_ROLE: 'true'
 aws-ecs-go-web-api:deploy:dev:
   <<: *deploy_tmpl
