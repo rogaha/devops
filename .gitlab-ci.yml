@@ -32,12 +32,12 @@ cache:
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
   script:
-    - 'cicd --env=${TARGET_ENV} build service --name=${SERVICE}'
+    - 'cicd --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
 
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
   script:
-    - 'cicd --env=${TARGET_ENV} deploy service --name=${SERVICE}'
+    - 'cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
 
 .migrate_tmpl: &migrate_tmpl
   <<: *job_tmpl
@@ -68,7 +68,8 @@ aws-ecs-go-web-api:build:dev:
     - dev-web-api
   variables:
     TARGET_ENV: 'dev'
-    SERVICE: 'aws-ecs-go-web-api'
+    TARGET_TYPE: 'service'
+    TARGET_REF: ''aws-ecs-go-web-api'
     AWS_USE_ROLE: 'true'
 aws-ecs-go-web-api:deploy:dev:
   <<: *deploy_tmpl
@@ -84,32 +85,40 @@ aws-ecs-go-web-api:deploy:dev:
     - 'db:migrate:dev'
   variables:
     TARGET_ENV: 'dev'
-    SERVICE: 'aws-ecs-go-web-api'
+    TARGET_TYPE: 'service'
+    TARGET_REF: 'aws-ecs-go-web-api'
     AWS_USE_ROLE: 'true'
 
-#ddlogscollector:deploy:stage:
-#  <<: *deploy_stage_tmpl
-#  variables:
-#    TARGET_ENV: 'stage'
-#    ECS_CLUSTER: '${ECS_CLUSTER}'
-#    SERVICE: 'ddlogscollector'
-#    S3_BUCKET: 'keenispace-services-stage'
-#    S3_KEY: 'aws/lambda/ddlogscollector/src/ddlogscollector-stage.zip'
-#    ENABLE_VPC: 0
-#  only:
-#    - master
-#    - stage
-#ddlogscollector:deploy:prod:
-#  <<: *deploy_prod_tmpl
-#  variables:
-#    TARGET_ENV: 'prod'
-#    ECS_CLUSTER: '${ECS_CLUSTER}'
-#    SERVICE: 'ddlogscollector'
-#    S3_BUCKET: 'keenispace-services-prod'
-#    S3_KEY: 'aws/lambda/ddlogscollector/src/ddlogscollector-prod.zip'
-#    ENABLE_VPC: 0
-#  only:
-#    - master
-#    - prod
-#  #dependencies:
-#  #  - 'ddlogscollector:deploy:stage'
+aws-lambda-python-ddlogs:build:dev:
+  <<: *build_tmpl
+  stage: build:dev
+  tags:
+    - dev
+  only:
+    - master
+    - dev
+    - dev-web-api
+  variables:
+    TARGET_ENV: 'dev'
+    TARGET_TYPE: 'function'
+    TARGET_REF: 'aws-lambda-python-ddlogs'
+    AWS_USE_ROLE: 'true'
+aws-lambda-python-ddlogs:deploy:dev:
+  <<: *deploy_tmpl
+  stage: deploy:dev
+  tags:
+    - dev
+  only:
+    - master
+    - dev
+    - dev-web-api
+  dependencies:
+    - 'aws-lambda-python-ddlogs:build:dev'
+    - 'db:migrate:dev'
+  variables:
+    TARGET_ENV: 'dev'
+    TARGET_TYPE: 'function'
+    TARGET_REF: 'aws-lambda-python-ddlogs'
+    AWS_USE_ROLE: 'true'
+
+

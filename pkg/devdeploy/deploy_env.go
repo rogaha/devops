@@ -1023,18 +1023,27 @@ func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) err
 	for _, s3Bucket := range s3Buckets {
 		bucketName := s3Bucket.BucketName
 
-		input, err := s3Bucket.Input()
+		_, err := svc.HeadBucket(&s3.HeadBucketInput{
+			Bucket: aws.String(bucketName),
+		})
 		if err != nil {
-			return err
-		}
+			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != s3.ErrCodeNoSuchBucket {
+				return errors.Wrapf(err, "failed to create s3 bucket '%s'", bucketName)
+			}
 
-		_, err = svc.CreateBucket(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != s3.ErrCodeBucketAlreadyExists && aerr.Code() != s3.ErrCodeBucketAlreadyOwnedByYou) {
+			// If the bucket was not found, create it.
+			input, err := s3Bucket.Input()
+			if err != nil {
+				return err
+			}
+
+			_, err = svc.CreateBucket(input)
+			if err != nil {
 				return errors.Wrapf(err, "failed to create s3 bucket '%s'", bucketName)
 			}
 			log.Printf("\t\tCreated: %s\n", bucketName)
 		} else {
+
 			log.Printf("\t\tFound: %s\n", bucketName)
 		}
 	}
