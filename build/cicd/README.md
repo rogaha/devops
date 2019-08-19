@@ -26,7 +26,7 @@ driven deployment.
 
 ## Overview
 
-The command line tool provides the functional to configure, build and deploy your code. When new code is push to GitLab, 
+The command line tool provides the functionality to configure, build and deploy your code. When new code is push to GitLab, 
 this tool will enable building, testing and deploying your code to [Amazon AWS](https://aws.amazon.com/). 
  
 Deploying your code to production always requires additional tooling and configuration. Instead of patching together a 
@@ -49,7 +49,7 @@ required to be written in go.
 Configuration for build and deploy is provided by 
 [gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy)
 
-For additional details regarding tool, refer to 
+For additional details regarding this tool, refer to 
 [gitlab.com/geeks-accelerator/oss/devops](https://gitlab.com/geeks-accelerator/oss/devops)
 
 
@@ -321,12 +321,12 @@ Access/Secret Keys are required
 
 Build the example service _aws-ecs-go-web-api_ 
 ```bash
-cicid --env=dev build service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
+$ cicid --env=dev build service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
 ```
 
 Deploy the example service _aws-ecs-go-web-api_ 
 ```bash
-cicid --env=dev deploy service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
+$ cicid --env=dev deploy service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
 ```
 
 

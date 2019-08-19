@@ -27,6 +27,10 @@ func main() {
 	// =========================================================================
 	// New CLI application.
 	app := cli.NewApp()
+	app.Name = "devops"
+	app.Version = "1.0"
+	app.Author = "Lee Brown"
+	app.Email = "lee@geeksinthewoods.com"
 
 	app.Commands = []cli.Command{
 		// inject is a command used to copy devops files as an example to a target repo.
