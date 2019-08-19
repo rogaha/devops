@@ -1028,7 +1028,7 @@ func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) err
 		})
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != s3.ErrCodeNoSuchBucket {
-				return errors.Wrapf(err, "failed to create s3 bucket '%s'", bucketName)
+				return errors.Wrapf(err, "failed to find s3 bucket '%s'", bucketName)
 			}
 
 			// If the bucket was not found, create it.

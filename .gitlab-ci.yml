@@ -120,5 +120,3 @@ aws-lambda-python-ddlogs:deploy:dev:
     TARGET_TYPE: 'function'
     TARGET_REF: 'aws-lambda-python-ddlogs'
     AWS_USE_ROLE: 'true'
-
-
