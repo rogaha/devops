@@ -15,13 +15,13 @@ type Function = string
 
 var (
 	Function_AwsLambdaGoFunc       = "aws-lambda-go-func"
-	Function_AwsLambdaPythonDdlogs = "aws-lambda-python-ddlogs"
+	FunctionAwsLambdaPythonDdlogs = "aws-lambda-python-ddlogs"
 )
 
 // List of function names used by main.go for help.
 var FunctionNames = []Function{
 	Function_AwsLambdaGoFunc,
-	Function_AwsLambdaPythonDdlogs,
+	FunctionAwsLambdaPythonDdlogs,
 }
 
 // FunctionContext defines the flags for deploying a function.
@@ -58,7 +58,7 @@ func NewFunctionContext(funcName string, cfg *devdeploy.Config) (*FunctionContex
 	switch funcName {
 	case Function_AwsLambdaGoFunc:
 		// No additional settings for function.
-	case Function_AwsLambdaPythonDdlogs:
+	case FunctionAwsLambdaPythonDdlogs:
 		// Change the build directory to the function directory instead of project root.
 		ctx.BuildDir = ctx.FunctionDir
 

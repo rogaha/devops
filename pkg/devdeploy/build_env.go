@@ -27,11 +27,11 @@ func SetupBuildEnv(log *log.Logger, cfg *Config) error {
 	{
 		log.Println("\tECR - Get or create repository")
 
-		respository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
+		repository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
 		if err != nil {
 			return err
 		}
-		cfg.AwsEcrRepository.result = respository
+		cfg.AwsEcrRepository.result = repository
 
 		log.Printf("\t%s\tECR Respository available\n", Success)
 	}
@@ -45,7 +45,7 @@ func setupAwsEcrRepository(log *log.Logger, cfg *Config, repo *AwsEcrRepository)
 
 	repositoryName := repo.RepositoryName
 
-	var respository *ecr.Repository
+	var repository *ecr.Repository
 	descRes, err := svc.DescribeRepositories(&ecr.DescribeRepositoriesInput{
 		RepositoryNames: []*string{aws.String(repositoryName)},
 	})
@@ -54,10 +54,10 @@ func setupAwsEcrRepository(log *log.Logger, cfg *Config, repo *AwsEcrRepository)
 			return nil, errors.Wrapf(err, "Failed to describe repository '%s'.", repositoryName)
 		}
 	} else if len(descRes.Repositories) > 0 {
-		respository = descRes.Repositories[0]
+		repository = descRes.Repositories[0]
 	}
 
-	if respository == nil {
+	if repository == nil {
 		input, err := repo.Input()
 		if err != nil {
 			return nil, err
@@ -68,10 +68,10 @@ func setupAwsEcrRepository(log *log.Logger, cfg *Config, repo *AwsEcrRepository)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to create repository '%s'", repositoryName)
 		}
-		respository = createRes.Repository
-		log.Printf("\t\tCreated: %s", *respository.RepositoryArn)
+		repository = createRes.Repository
+		log.Printf("\t\tCreated: %s", *repository.RepositoryArn)
 	} else {
-		log.Printf("\t\tFound: %s", *respository.RepositoryArn)
+		log.Printf("\t\tFound: %s", *repository.RepositoryArn)
 
 		log.Println("\t\tChecking old ECR images.")
 		maxImages := repo.MaxImages
@@ -93,5 +93,5 @@ func setupAwsEcrRepository(log *log.Logger, cfg *Config, repo *AwsEcrRepository)
 		}
 	}
 
-	return respository, nil
+	return repository, nil
 }

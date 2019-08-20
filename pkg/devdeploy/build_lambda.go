@@ -7,7 +7,7 @@ import (
 	"gopkg.in/go-playground/validator.v9"
 )
 
-// BuildService defines the details needed to build a service using docker.
+// BuildLambda defines the details needed to build a function using docker.
 type BuildLambda struct {
 	// Required flags.
 	FuncName     string `validate:"required" example:"web-api"`

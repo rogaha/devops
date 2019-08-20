@@ -40,7 +40,7 @@ var _ = func() error {
 		b.SetResolver("internal/schema/migrations.go", packr.Pointer{ForwardBox: gk, ForwardPath: "f00ea8727fc9c052db9b14e6de949262"})
 		b.SetResolver("internal/schema/schema.go", packr.Pointer{ForwardBox: gk, ForwardPath: "e7b423119ac99f6a912e2851da93a80c"})
 		b.SetResolver("main.go", packr.Pointer{ForwardBox: gk, ForwardPath: "c77da69c9c611eb0bee59a916fc8c31e"})
-		}()
+	}()
 
 	return nil
 }()

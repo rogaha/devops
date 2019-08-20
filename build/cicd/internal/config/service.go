@@ -19,12 +19,12 @@ import (
 type Service = string
 
 var (
-	Service_AwsEcsGoWebApi = "aws-ecs-go-web-api"
+	ServiceAwsEcsGoWebApi = "aws-ecs-go-web-api"
 )
 
 // List of service names used by main.go for help.
 var ServiceNames = []Service{
-	Service_AwsEcsGoWebApi,
+	ServiceAwsEcsGoWebApi,
 }
 
 // ServiceContext defines the flags for deploying a service.
@@ -64,7 +64,7 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 
 	// =========================================================================
 	// Context settings based on target env.
-	if cfg.Env == Env_Stage || cfg.Env == Env_Prod {
+	if cfg.Env == EnvStage || cfg.Env == EnvProd {
 		ctx.EnableHTTPS = true
 		ctx.StaticFilesS3Enable = true
 	} else {
@@ -110,7 +110,7 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 	// =========================================================================
 	// Service dependant settings.
 	switch serviceName {
-	case Service_AwsEcsGoWebApi:
+	case ServiceAwsEcsGoWebApi:
 
 		ctx.ServiceHostPrimary = fmt.Sprintf("%s.devops.example.saasstartupkit.com", cfg.Env)
 		ctx.ServiceHostNames = []string{

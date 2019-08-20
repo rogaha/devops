@@ -134,11 +134,11 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 	{
 		log.Println("\tECR - Get repository")
 
-		respository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
+		repository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
 		if err != nil {
 			return err
 		}
-		cfg.AwsEcrRepository.result = respository
+		cfg.AwsEcrRepository.result = repository
 
 		targetService.ReleaseImage = *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
 

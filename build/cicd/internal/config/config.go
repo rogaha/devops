@@ -33,16 +33,16 @@ const (
 type Env = string
 
 var (
-	Env_Dev   Env = "dev"
-	Env_Stage Env = "stage"
-	Env_Prod  Env = "prod"
+	EnvDev   Env = "dev"
+	EnvStage Env = "stage"
+	EnvProd  Env = "prod"
 )
 
 // List of env names used by main.go for help.
 var EnvNames = []Function{
-	Env_Dev,
-	Env_Stage,
-	Env_Prod,
+	EnvDev,
+	EnvStage,
+	EnvProd,
 }
 
 // ConfigContext defines the flags for build env.
@@ -204,7 +204,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 	cfg.AwsS3BucketPublicKeyPrefix = "/public"
 
 	// For production, enable Cloudfront CND for all static files to avoid serving them from the slower S3 option.
-	if true || cfg.Env == Env_Prod {
+	if true || cfg.Env == EnvProd {
 		cfg.AwsS3BucketPublic.CloudFront = &devdeploy.AwsS3BucketCloudFront{
 			// S3 key prefix to request your content from a directory in your Amazon S3 bucket.
 			OriginPath: cfg.AwsS3BucketPublicKeyPrefix,
