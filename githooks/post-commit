@@ -11,11 +11,14 @@ packr2
 
 cd $curDir 
 
-git add cmd/devops/packrd
-
-fileChanged=$(git diff cmd/devops/packrd)
+fileChanged=$(git diff cmd/devops/packrd/packed-packr.go)
 if [[ $fileChanged != "" ]]; then
-	git add cmd/devops/packrd/*
-	git commit --amend -C HEAD  --no-verify
+    git add cmd/devops/packrd/packed-packr.go
+    git commit --amend -C HEAD  --no-verify
 fi 
 
+fileChanged=$(git diff cmd/devops/main-packr.go)
+if [[ $fileChanged != "" ]]; then
+    git add cmd/devops/main-packr.go
+    git commit --amend -C HEAD  --no-verify
+fi
