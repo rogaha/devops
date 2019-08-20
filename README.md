@@ -1,7 +1,7 @@
 # Devops 
 [![Build Status](https://gitlab.com/geeks-accelerator/oss/devops/badges/master/pipeline.svg)](https://gitlab.com/geeks-accelerator/oss/devops/pipelines) 
 [![GoDoc](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy?status.svg)](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy)
-[![Go Report Card](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops?style=flat-square)](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops)
+[![Go Report Card](https://goreportcard.com/badge/gitlab.com/geeks-accelerator/oss/devops?style=flat-square)](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops)
 
 
 __Devops__ is a tool to that facilitates a continuous deployment pipeline for GitLab. 
@@ -269,9 +269,8 @@ Have you had a good experience with `devops` ? Why not share some love and contr
 
 ## Join us on Gopher Slack
 
-If you are having problems installing, troubles getting the project running or would like to contribute, join the 
-channel #saas-starter-kit on [Gopher Slack](http://invite.slack.golangbridge.org/) 
-
+If you are having problems installing, getting the project running, or would like to contribute, join the         
+channel #saas-starter-kit on [Gopher Slack](http://invite.slack.golangbridge.org/)
 
 ## License
 
