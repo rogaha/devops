@@ -441,12 +441,15 @@ export AWS_USE_ROLE=false
 ```
 
 
-
 ## Contributions
 
 We :heart: contributions.
 
 Have you had a good experience with `devops` ? Why not share some love and contribute code?
+
+Thank you to all those that have contributed to this project and are using it in their projects. You can find a 
+CONTRIBUTORS file where we keep a list of contributors to the project. If you contribute a PR please consider adding 
+your name there. 
 
 
 ## Join us on Gopher Slack
