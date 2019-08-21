@@ -38,7 +38,7 @@ Make sure you have a working Go environment.  Go version 1.2+ is supported.  [Se
 the install instructions for Go](http://golang.org/doc/install.html).
 
 
-To install cli, simply run:
+To install _devops_, simply run:
 ```
 $ go get gitlab.com/geeks-accelerator/oss/devops/cmd/devops
 ```
@@ -89,7 +89,9 @@ $ cicd [global options] command [command options] [arguments...]
 
 ### Commands
 
-* `inject-build cicd` - Copies the build tool to a target project    
+* `inject-build cicd` - Copies the build tool to a target project. This copy the files for [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) 
+to your specific project path. It will try to locate go.mod and use the value for `module` as the import path for all 
+sub packages copied. 
    
     ```bash
     $ devops inject-build cicd -project NNNNN [command options]

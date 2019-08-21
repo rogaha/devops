@@ -14,7 +14,7 @@ import (
 type Function = string
 
 var (
-	Function_AwsLambdaGoFunc       = "aws-lambda-go-func"
+	Function_AwsLambdaGoFunc      = "aws-lambda-go-func"
 	FunctionAwsLambdaPythonDdlogs = "aws-lambda-python-ddlogs"
 )
 

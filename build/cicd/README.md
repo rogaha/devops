@@ -146,12 +146,14 @@ internal: [internal/schema](https://gitlab.com/geeks-accelerator/oss/devops/tree
 The example schema package provides two separate methods for handling schema migration:
 * [Migrations](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/build/cicd/internal/schema/migrations.go) -
 List of direct SQL statements for each migration with defined version ID. A database table is created to persist 
-executed migrations. Upon run of each schema migration run, the migraction logic checks the migration database table to 
-check if it’s already been executed. Thus, schema migrations are only ever executed once. Migrations are defined as a function to enable complex migrations so results from query manipulated before being piped to the next query. 
+executed migrations. Upon run of each schema migration run, the migration logic checks the migration database table to 
+check if it’s already been executed. Thus, schema migrations are only ever executed once. Migrations are defined as a 
+function to enable complex migrations so results from query manipulated before being piped to the next query. 
 
 * [Init Schema](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/build/cicd/internal/schema/init_schema.go) - 
 If you have a lot of migrations, it can be a pain to run all them. For example, when you are deploying a new instance of 
-the app into a clean database. To prevent this, use the initSchema function that will run as-if no migration was run before (in a new clean database). 
+the app into a clean database. To prevent this, use the initSchema function that will run as-if no migration was run 
+before (in a new clean database). 
 
 Another bonus with the globally defined schema is that it enables your testing package the ability to dynamically spin 
 up database containers on-demand and automatically include all the migrations. This allows the testing package to 
@@ -165,7 +167,7 @@ Make sure you have a working Go environment.  Go version 1.2+ is supported.  [Se
 the install instructions for Go](http://golang.org/doc/install.html).
 
 
-To install cli, simply run:
+To install _cicd_, simply run:
 ```
 $ go get gitlab.com/geeks-accelerator/oss/devops/build/cicd
 ```

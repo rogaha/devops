@@ -4,28 +4,181 @@
 [![Go Report Card](https://goreportcard.com/badge/gitlab.com/geeks-accelerator/oss/devops?style=flat-square)](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops)
 
 
-__Devops__ is a tool to that facilitates a continuous deployment pipeline for GitLab. 
+__Devops__ is a set of tools for building a continuous deployment pipeline for [GitLab CI/CD](https://docs.gitlab.com/ee/ci/) 
+with serverless infrastructure on AWS. 
 
 Check out the [full presentation](https://docs.google.com/presentation/d/1sRFQwipziZlxBtN7xuF-ol8vtUqD55l_4GE-4_ns-qM/edit?usp=sharing) 
 that covers how to setup your GitLab CI/CD pipeline that uses autoscaling GitLab Runners on AWS.
 
-## On the menu
+<!-- toc -->
 
-- [Description](#description)
-- [Getting Started](#gettings-started)
+- [Overview](#overview)
+- [Installation](#installation)
+- [Getting Started](#getting-started)
+    * [Configuration](#configuration)
+    * [Database Schema](#database-schema)
+    * [GitLab CI/CD](#gitlab-cicd)
 - [Usage](#usage)
-- [Setup GitLab CI / CD](#setup-gitlab-CI-CD)
+    * [AWS Permissions](#aws-permissions)
 - [Contributions](#contributions)
 - [Join us on Gopher Slack](#join-us-on-gopher-slack)
 - [License](#license)
 
+<!-- tocstop -->
 
-## Description
 
-_Devops_ handles creating AWS resources and deploying your services with minimal additional configuration. You can 
-customizing any of the configuration in the code. While AWS is already a core part of the saas-starter-kit, keeping 
-the deployment in GoLang limits the scope of additional technologies required to get your project successfully up and 
-running. If you understand Golang, then you will be a master at devops with this tool.
+## Overview
+
+_Devops_ handles creating AWS resources and serverless deployments for your project using Go code (hopefully the primary 
+language your project is coded in). This is known _Configuration as Code_ where code is the formal migration of config 
+between your applications and your deployment environment. What does this entail?
+
+1. All configuration for your project is check into version control.  
+ 
+2. Configurations are migrated as apart of your build pipeline and is therefore treated the same as application code. 
+
+3. You can customizing any of the configuration code without having to deal with JSON or YAML files. 
+
+This project was developed to support the [SaaS Startup Kit](https://gitlab.com/geeks-accelerator/oss/saas-starter-kit) 
+to facilitate getting code to production with minimal additional configuration. 
+
+Multiple AWS services are already integrated into the _SaaS Startup Kit_, using the [AWS SDK for Go](https://aws.amazon.com/sdk-for-go/). 
+Leveraging this existing AWS integration reduces new project dependencies and limits the scope of additional technologies 
+required to get your code successfully up and running on production. If you understand Golang, then you will be a master 
+at devops with this tool.
+
+This project has three main components:
+
+1. [pkg/devdeploy](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy) - A package which provides 
+configuration for AWS resources and handles executing that configuration for you. 
+
+2. [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) - An example implementation of the 
+_devdeploy_ package that includes configuration for two example applications: 
+
+    * [Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) - An API service 
+    written in GO that is deployed to [AWS Fargate](https://aws.amazon.com/fargate/) with built in support for HTTPS.
+    
+        AWS Fargate is a compute engine for Amazon ECS that allows you to run containers without having to manage servers or 
+        clusters. With AWS Fargate, you no longer have to provision, configure, and scale clusters of virtual machines to 
+        run containers.  
+
+    * [Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs) - 
+    An python script that is deployed to [AWS Lambda](https://aws.amazon.com/lambda/) to ship logs from AWS to Datadog. 
+    
+        AWS Lambda lets you run code without provisioning or managing servers. You pay only for the compute time you consume, 
+        there is no charge when your code is not running. 
+
+3. [cmd/devops](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/cmd/devops) - A tool developed to help make it 
+easy to get starting with this project. This tool will copy the example _build/cicd_ to a desired project directory 
+updating Go imports as necessary. 
+
+
+
+## Installation
+
+Make sure you have a working Go environment.  Go version 1.2+ is supported.  [See
+the install instructions for Go](http://golang.org/doc/install.html).
+
+
+To install _devops_, simply run:
+```
+$ go get gitlab.com/geeks-accelerator/oss/devops/cmd/devops
+```
+
+Make sure your `PATH` includes the `$GOPATH/bin` directory so your commands can
+be easily used:
+```
+export PATH=$PATH:$GOPATH/bin
+```
+
+
+## Getting Started
+
+Make a copy of [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) to your specified 
+project path. 
+```bash
+$ devops inject-build cicd -project $GOPATH/src/gitlab.com/geeks-accelerator/oss/saas-starter-kit
+```
+
+You should only run this command once as it will only create files that don't exist. It will not update or overwrite 
+existing files. Once this command is executed, you are in charge of maintaining your copy _cicd_ as it will contain 
+configuration details only relevant to your project.  
+
+The `build/cicd` directory should have been added to your project path with the following structure:
+```
+.
+├── ...
+├── build/cicd
+│         ├── internal
+│         │   ├── config      # Project configuration for build and deployment. 
+│         │   └── schema      # Database schema migration helper.
+│         ├── main.go         # Command line entry point for executing config and schema.        
+│         └── README.md       # Instructions focused on using cicd for a project. 
+└── ...
+```
+
+No changes should be necessary to `main.go`. You should review `README.md` instructions as it will cover the current 
+capabilities currently coded in `config`.  Once you have completed updated the configuration for your services and 
+functions, ensure the `README.md` reflects the changes you have made.  
+
+### Configuration
+
+The directory `build/cicd/internal/config` is where all the configuration for deployment exists. This code should be 
+updated to reflect your desired configuration. 
+```
+config
+├── config.go       # Configuration for AWS infrastructure. 
+├── function.go     # Defines functions that will be deployed to AWS Lambda. 
+├── service.go      # Defines services that will be deployed to AWS Fargate. 
+└── schema.go       # Handles executution of schema migrations. 
+```
+
+* `config.go` - Defines the configuration for AWS infrastructure required for serverless deployment. This includes 
+details for AWS VPC, security group, RDS postgres database, Redis cache cluster, etc. 
+ 
+* `function.go` - Defines your functions that will be deployed to AWS Lambda. This includes settings for the runtime, 
+amount of memory, and timeout. The code has one function defined, 
+[Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs). 
+Additional functions can easily be defined here.  
+
+* `service.go` - Defines your services that will be deployed to AWS Fargate. This includes settings for your AWS ECS 
+Cluster, the specific service and task definitions. The code as one service defined, 
+[Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api). Additional 
+services can easily be defined here.  
+
+* `schema.go` - Handles execution of schema migrations for target the deployment environment. Database credentials are 
+loaded from AWS Secrets Manager. 
+
+
+### Database Schema
+
+The directory `build/cicd/internal/schema` is a minimalistic database migration script that implements 
+[github.com/geeks-accelerator/sqlxmigrate](https://godoc.org/github.com/geeks-accelerator/sqlxmigrate). Database schema 
+for the entire project should be defined globally. The [SaaS Startup Kit](https://gitlab.com/geeks-accelerator/oss/saas-starter-kit) 
+also uses this package to dynamically spin up database containers on-demand and automatically include all the 
+migrations. This allows the testing package to programmatically execute schema migrations before running any unit tests. 
+```
+schema
+├── schema.go       # Entry point for executing schema migration. 
+├── init_schema.go  # SQL queries executed on new databases. 
+└── migrations.go   # Versioned SQL queries that be applied to the database. 
+```
+
+* `init_schema.go` - SQL queries that will run as-if no migration was run before (in a new clean database). 
+
+* `migrations.go` - List of direct SQL statements for each migration with defined version ID. A database table is 
+created to persist executed migrations. Upon run of each schema migration run, the migration logic checks the migration 
+database table to check if it’s already been executed. Thus, schema migrations are only ever executed once. Migrations 
+are defined as a function to enable complex migrations so results from query manipulated before being piped to the next 
+query. 
+
+
+### GitLab CI/CD
+
+_cicd_ command is primary executed by a GitLab runner. After you have updated the configuration for your project, you 
+will need to configure GitLab CI/CD to execute the build and deployment. This project has example 
+[.gitlab-ci.yml](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/.gitlab-ci.yml) that should be placed in 
+your project root. 
 
 The project includes a Postgres database which adds an additional resource dependency when deploying the 
 project. It is important to know that the tasks running schema migration for the Postgres database can not run as shared 
@@ -40,6 +193,11 @@ Note that using shared runners hosted by GitLab also requires AWS credentials to
 Hosted your own GitLab runners uses AWS Roles instead of hardcoding the access key ID and secret access key in GitLab and 
 in other configuration files. And since this project is open-source, we wanted to avoid sharing our AWS credentials.
 
+ 
+**Setup GitLab CI/CD**
+
+Below outlines the basic steps to setup [Autoscaling GitLab Runner on AWS](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/). 
+
 If you don't have an AWS account, signup for one now and then proceed with the deployment setup. 
 
 We assume that if you are deploying the SaaS Stater Kit, you are starting from scratch with no existing dependencies. 
@@ -48,45 +206,6 @@ pre-purchased domain names, make sure they are added to Route 53 in the AWS acco
 create a new zone is Route 53 and update the DNS for the domain name when your ready to make the transition. It is 
 required to hosted the DNS on Route 53 so DNS entries can be managed by this deploy tool. It is possible to use a 
 [subdomain that uses Route 53 as the DNS service without migrating the parent domain](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingNewSubdomain.html). 
-
-
-## Getting Started
-
-You can run the both commands `build` and `deploy` locally after setting up the initial 
-AWS permissions. 
-
-1. You will need an existing AWS account or create a new AWS account.
-
-2. Define a new [AWS IAM Policy](https://console.aws.amazon.com/iam/home?region=us-west-2#/policies$new?step=edit) 
-called `saas-starter-kit-deploy` with a defined JSON statement instead of using the visual 
-editor. The statement is rather large as each permission is granted individually. A copy of 
-the statement is stored in the repo at 
-[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
-
-3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
-called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 
-created from step 1 `saas-starter-kit-deploy`
-
-4. Try running the deploy
-```bash
-go run main.go deploy -service=web-api -env=dev
-```
-
-Note: This user created is only for development purposes and is not needed for the build 
-pipeline using GitLab CI / CD.
-
-
-## Usage 
-
-```bash
-go run main.go deploy -service=web-app -env=dev -enable_https=true -primary_host=example.saasstartupkit.com -host_names=example.saasstartupkit.com,dev.example.saasstartupkit.com -private_bucket=saas-starter-kit-private -public_bucket=saas-starter-kit-public -public_bucket_cloudfront=true -static_files_s3=true -static_files_img_resize=1 -recreate_service=0
-```     
-
-
- 
-## Setup GitLab CI / CD
-
-Below outlines the basic steps to setup [Autoscaling GitLab Runner on AWS](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/). 
 
 1. Define an [AWS IAM Role](https://console.aws.amazon.com/iam/home?region=us-west-2#/roles$new?step=type) that will be
 attached to the GitLab Runner instances. The role will need permission to scale (EC2), update the cache (via S3) and 
@@ -260,6 +379,69 @@ instance will be a dedicated host since we need it always up and running, thus i
     sudo gitlab-runner restart
     ``` 
 
+
+
+## Usage  
+
+You can execute the _cicd_ command locally as an alternative to having GitLab CI/CD execute the commands. Before you 
+are able to run the build and deploy sub commands, you will need an AWS access/secret key. 
+
+```bash
+$ cicd help
+NAME:
+   cicd - Provides build and deploy for GitLab to Amazon AWS
+
+USAGE:
+   cicd [global options] command [command options] [arguments...]
+
+VERSION:
+   1.0
+
+COMMANDS:
+   build, b   build a service or function
+   deploy, d  deploy a service or function
+   schema, s  manage the database schema
+   help, h    Shows a list of commands or help for one command
+
+GLOBAL OPTIONS:
+   --env value             target environment, one of [dev, stage, prod]
+   --aws-access-key value  AWS Access Key [$AWS_ACCESS_KEY_ID]
+   --aws-secret-key value  AWS Secret Key [$AWS_SECRET_ACCESS_KEY]
+   --aws-region value      AWS Region [$AWS_REGION]
+   --aws-use-role          Use an IAM Role else AWS Access/Secret Keys are required [$AWS_USE_ROLE]
+   --help, -h              show help
+   --version, -v           print the version
+```
+Refer to the _cicd_ [readme](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd#usage) for full 
+command details 
+
+
+### AWS Permissions 
+
+Create an AWS user for development purposes. This user is not needed for the build pipeline using GitLab CI/CD.
+
+1. You will need an existing AWS account or create a new AWS account.
+
+2. Define a new [AWS IAM Policy](https://console.aws.amazon.com/iam/home?region=us-west-2#/policies$new?step=edit) 
+called `saas-starter-kit-deploy` with a defined JSON statement instead of using the visual editor. The statement is 
+rather large as each permission is granted individually. A copy of the statement is stored in the repo at 
+[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
+
+3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
+called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 
+created from step 1 `saas-starter-kit-deploy`
+
+4. Set your AWS credentials as [environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html). 
+These can also be passed into _cicd_ as command line options. 
+```bash
+export AWS_ACCESS_KEY_ID=XXXXXXXXX
+export AWS_SECRET_ACCESS_KEY=XXXXXXXXX
+export AWS_REGION="us-west-2"
+export AWS_USE_ROLE=false
+```
+
+
+
 ## Contributions
 
 We :heart: contributions.
@@ -271,6 +453,7 @@ Have you had a good experience with `devops` ? Why not share some love and contr
 
 If you are having problems installing, getting the project running, or would like to contribute, join the         
 channel #saas-starter-kit on [Gopher Slack](http://invite.slack.golangbridge.org/)
+
 
 ## License
 
