@@ -28,7 +28,7 @@ func main() {
 	// New CLI application.
 	app := cli.NewApp()
 	app.Name = "devops"
-	app.Version = "1.0"
+	app.Version = "1.1"
 	app.Author = "Lee Brown"
 	app.Email = "lee@geeksinthewoods.com"
 
@@ -150,7 +150,7 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 			continue
 		}
 
-		dat, err := box.FindString(filepath.Join(dir, f))
+		dat, err := box.FindString(f)
 		if err != nil {
 			return err
 		}
