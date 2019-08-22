@@ -128,7 +128,7 @@ func EcrPurgeImages(awsCredentials AwsCredentials, ecrRepositoryName string, max
 	}
 
 	svc := ecr.New(awsCredentials.Session())
-	
+
 	// Describe all the image IDs to determine oldest.
 	var (
 		ts       []int
