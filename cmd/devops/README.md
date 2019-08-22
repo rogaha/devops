@@ -3,7 +3,7 @@
 devops 
 === 
 
-_cicd_ is a command line tool that makes a copy of the 
+_devops_ is a command line tool that makes a copy of the 
 [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) tool for configuration and 
 deployment of your project. The goal is to help developers get a local copy of _cicd_ without a bunch of copy/paste. 
 
@@ -60,7 +60,7 @@ When code is changed in this project that needs to be included with _build/cicd_
     Packr is a simple solution for bundling static assets inside of Go binaries. Most importantly it does it in a way 
     that is friendly to developers while they are developing.
 
-To install _parkr2_ 
+To install _packr2_ 
 ```bash
 $ go get -u github.com/gobuffalo/packr/v2/packr2
 ```
@@ -68,6 +68,10 @@ $ go get -u github.com/gobuffalo/packr/v2/packr2
 This repo has a post-commit hook at [githooks/post-commit](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/githooks/post-commit) 
 to detect changes to `build/cicd` tool and executes _parkr2_. Changed files are included with `git commit --amend`
 
+To install the post-commit hook
+```bash
+cp githook/post-commit .git/hooks
+```
 
 
 ## Usage 
@@ -90,11 +94,13 @@ $ cicd [global options] command [command options] [arguments...]
 ### Commands
 
 * `inject-build cicd` - Copies the build tool to a target project. This copy the files for [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) 
-to your specific project path. It will try to locate go.mod and use the value for `module` as the import path for all 
-sub packages copied. 
-   
+to your specific project path. 
+
+    The target project must have a `go.mod`. The value for `module` is used to replace all import path for the sub 
+    packages copied. You can use `go mod init github.com/my/repo` to create the `go.mod` file. 
+
     ```bash
-    $ devops inject-build cicd -project NNNNN [command options]
+    $ devops [global options] inject-build cicd -project NNNNN [command options]
     ``` 
     
     Options: 
@@ -106,12 +112,12 @@ sub packages copied.
 * `help` - Shows a list of commands
        
     ```bash
-    $ cicd help
+    $ devops help
     ```
         
     Or for one command:    
     ```bash
-    $ cicd inject-build help
+    $ devops inject-build help
     ```
 
 

@@ -30,10 +30,10 @@ The command line tool provides the functionality to configure, build and deploy 
 this tool will enable building, testing and deploying your code to [Amazon AWS](https://aws.amazon.com/). 
  
 Deploying your code to production always requires additional tooling and configuration. Instead of patching together a 
-system of of existing tools and configuration files. This tool centralizes configuration for the application and any 
+system of of existing tools and configuration files centralizes configuration for the application and any 
 additional deployment resources needed. 
 
-Configuration is define with code. AWS resources are created/maintained using the [AWS SDK for Go](https://docs.aws.amazon.com/sdk-for-go/api/).
+Configuration is defined with code. AWS resources are created/maintained using the [AWS SDK for Go](https://docs.aws.amazon.com/sdk-for-go/api/).
 
 **This tool is used by GitLab CI/CD** and is configured by a file called .gitlab-ci.yml placed at the repository’s root. 
 
@@ -77,7 +77,7 @@ Secrets and other credentials are stored in [AWS Secrets Manager](https://aws.am
 ### Services 
 Services are generally applications that will need to be long running or continuously available. An example 
 [web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) deployed as service 
-is provided by the devops project in [examples]((https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
+is provided by the devops project in [examples](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
 
 The [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile) for 
 the example service is defined as [multi-stage build](https://docs.docker.com/develop/develop-images/multistage-build/) 
@@ -101,14 +101,17 @@ Services are deployed to [AWS Fargate](https://aws.amazon.com/fargate/) based on
     clusters. With AWS Fargate, you no longer have to provision, configure, and scale clusters of virtual machines to 
     run containers.  
  
-If the docker file is a multi-stage build and it contains a stage with the name `build_base_golang`, additional caching will 
-be implemented to reduce build times. The build command assumes for a stage named `build_base_golang` assumes that the 
-stage will run `go mod download` to pull down all package dependencies. The build command computes a checksum for the 
-project go.mod and then executes a docker build that targets the specific stage `build_base_golang`. The built container 
+If the docker file is a multi-stage build and it contains a stage with the name `build_base_golang`, additional caching 
+will be implemented to reduce build times. The build command assumes for a stage named `build_base_golang` assumes that 
+the stage will run `go mod download` to pull down all package dependencies. The build command computes a checksum for the 
+project `go.sum` and then executes a docker build that targets the specific stage `build_base_golang`. The built container 
 image is tagged with the go.mod hash and pushed to the projects 
 [GitLab repository](https://docs.gitlab.com/ee/user/project/repository/). 
 
-
+    When Go modules are enabled for the project, it includes a `go.sum` that provides checksums-trees for dependencies. 
+    The same resulting checksum means that the go mod download result will be the same and is safe to use the same 
+    base image again from cache. 
+      
 
 ### Functions 
 
@@ -183,7 +186,7 @@ export PATH=$PATH:$GOPATH/bin
 ## Getting Started 
 
 _cicd_ requires AWS permissions to be executed locally. For the GitLab CI/CD build pipeline, AWS roles will be used. This 
-user is only nessissary for running _cicd_ locally. 
+user is only necessary for running _cicd_ locally. 
 
 1. You will need an existing AWS account or create a new AWS account.
 
@@ -196,6 +199,7 @@ the statement is stored in the devops repo at
 3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
 called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 
 created from step 1 `saas-starter-kit-deploy`
+
 
 4. Try running the build for a single service. 
 ```bash

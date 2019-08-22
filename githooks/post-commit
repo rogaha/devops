@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 
 # update files for cmd/devops with packr 

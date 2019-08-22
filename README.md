@@ -332,9 +332,16 @@ instance will be a dedicated host since we need it always up and running, thus i
     ```
     
 14. [Register the runner](https://docs.gitlab.com/runner/register/index.html).
+    
+    You will need to navigate to the `CI / CD` under `Settings` for your GitLab repo. This will provide the first two 
+    bits of information you will need to register a new runner. 
+    ![GitLab CICD Settings](assets/readme-files/gitlab-cicd-settings-setup-manual-runner.png)
+
+    Now you can execute the register command.     
     ```bash
     sudo gitlab-runner register
     ```    
+    
     Notes: 
     * When asked for gitlab-ci tags, enter `master,prod,prod-*`
         * This will limit commits to the master or prod branches from triggering the pipeline to run. This includes a 
@@ -361,13 +368,6 @@ instance will be a dedicated host since we need it always up and running, thus i
         disable_cache = true
         volumes = ["/cache"]
         shm_size = 0
-      [runners.cache]
-        Type = "s3"
-        Shared = true
-        [runners.cache.s3]
-          ServerAddress = "s3.us-west-2.amazonaws.com"
-          BucketName = "XXXXX"
-          BucketLocation = "us-west-2"
       [runners.machine]
         IdleCount = 0
         IdleTime = 1800
@@ -386,14 +386,16 @@ instance will be a dedicated host since we need it always up and running, thus i
         ]                         
     ```  
     
-    You will need use the same VPC subnet and availability zone as the instance launched in step 2. We are using AWS 
-    region `us-west-2`. The _ServerAddress_ for S3 will need to be updated if the region is changed. For `us-east-1` the
-    _ServerAddress_ is `s3.amazonaws.com`. Under MachineOptions you can add anything that the [AWS Docker Machine](https://docs.docker.com/machine/drivers/aws/#options) 
-    driver supports.
-     
-    Below are some example values for the placeholders to ensure for format of your values are correct. 
+    You will need use the same VPC subnet and [availability zone](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html) 
+    as the instance launched in step 2. We are using AWS region `us-west-2`. Under MachineOptions you can add anything 
+    that the [AWS Docker Machine](https://docs.docker.com/machine/drivers/aws/#options) driver supports.
+    
+    ![GitLab Runner Instance](assets/readme-files/aws-ec2-gitlab-runner-console-decscription.png)
+    
+    Below are some example values for the placeholders to ensure for format of your values are correct. The AWS web 
+    console lists the full availability zone as `us-west-2a`, GitLab requires only the letter of the availability zone, 
+    in this case `a` to be used for `amazonec2-zone`. 
     ```yaml
-    BucketName = saas-starter-kit-usw
     amazonec2-vpc-id=vpc-5f43f027
     amazonec2-subnet-id=subnet-693d3110
     amazonec2-zone=a
@@ -404,6 +406,29 @@ instance will be a dedicated host since we need it always up and running, thus i
     sudo gitlab-runner restart
     ``` 
 
+    It's optional to enable cache to speed up your jobs. For more details on this, refer to 
+    [The runners.cache section](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/#the-runnerscache-section). 
+    If you decide to enable cache, an AWS S3 Bucket is required. We normally manually create an S3 bucket with the same 
+    name as the primate S3 bucket configured in [config.go](build/cicd/internal/config/config.go). The deployment will 
+    finish applying any additional details required for the project to the manually created S3 bucket even though you 
+    already created the bucket. 
+    ```yaml 
+      [runners.cache]
+        Type = "s3"
+        Shared = true
+        [runners.cache.s3]
+          ServerAddress = "s3.us-west-2.amazonaws.com"
+          BucketName = "XXXXX"
+          BucketLocation = "us-west-2"
+     ```
+    The _ServerAddress_ for S3 will need to be updated if the region is changed. For `us-east-1` the
+         _ServerAddress_ is `s3.amazonaws.com`.  Read more here about [accessing a bucket](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro)
+
+16. Setup complete. You should now be able navigate back to the `CI / CD` under `Settings` for your GitLab repo and see 
+the newly deployed instance listed as an active runner. 
+
+![GitLab Runner Activated](assets/readme-files/gitlab-cicd-settings-setup-manual-activated.png)
+    
 
 
 ## Usage  

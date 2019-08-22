@@ -92,7 +92,6 @@
         "s3:GetBucketPublicAccessBlock",
         "s3:GetBucketAcl",
         "s3:HeadBucket",
-        "s3:ListObjects",
         "s3:ListBucket",
         "s3:GetObject",
         "s3:PutLifecycleConfiguration",
