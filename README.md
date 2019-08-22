@@ -457,7 +457,7 @@ GLOBAL OPTIONS:
    --env value             target environment, one of [dev, stage, prod]
    --aws-access-key value  AWS Access Key [$AWS_ACCESS_KEY_ID]
    --aws-secret-key value  AWS Secret Key [$AWS_SECRET_ACCESS_KEY]
-   --aws-region value      AWS Region [$AWS_REGION]
+   --aws-region value      AWS Region [$AWS_DEFAULT_REGION]
    --aws-use-role          Use an IAM Role else AWS Access/Secret Keys are required [$AWS_USE_ROLE]
    --help, -h              show help
    --version, -v           print the version
@@ -488,7 +488,7 @@ These can also be passed into _cicd_ as command line options.
 ```bash
 export AWS_ACCESS_KEY_ID=XXXXXXXXX
 export AWS_SECRET_ACCESS_KEY=XXXXXXXXX
-export AWS_REGION="us-west-2"
+export AWS_DEFAULT_REGION="us-west-2"
 export AWS_USE_ROLE=false
 ```
 

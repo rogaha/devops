@@ -233,7 +233,7 @@ $ cicd [global options] command [command options] [arguments...]
 
     `--aws-secret-key value`   
 
-* AWS Region - optional, can be set via env variable `AWS_REGION`
+* AWS Region - optional, can be set via env variable `AWS_DEFAULT_REGION`
 
     `--aws-region value`
 

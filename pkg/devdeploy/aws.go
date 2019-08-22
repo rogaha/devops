@@ -54,7 +54,7 @@ func (creds AwsCredentials) Session() *session.Session {
 func GetAwsCredentialsFromEnv(targetEnv string) (AwsCredentials, error) {
 	var creds AwsCredentials
 
-	creds.Region = strings.TrimSpace(GetTargetEnv(targetEnv, "AWS_REGION"))
+	creds.Region = strings.TrimSpace(GetTargetEnv(targetEnv, "AWS_DEFAULT_REGION"))
 
 	if v := GetTargetEnv(targetEnv, "AWS_USE_ROLE"); v != "" {
 		creds.UseRole, _ = strconv.ParseBool(v)

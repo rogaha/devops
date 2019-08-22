@@ -992,7 +992,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			placeholders := map[string]string{
 				"{SERVICE}":               targetService.ServiceName,
 				"{RELEASE_IMAGE}":         targetService.ReleaseImage,
-				"{AWS_REGION}":            cfg.AwsCredentials.Region,
+				"{AWS_DEFAULT_REGION}":    cfg.AwsCredentials.Region,
 				"{AWS_LOGS_GROUP}":        targetService.AwsCloudWatchLogGroup.LogGroupName,
 				"{AWS_S3_BUCKET_PRIVATE}": cfg.AwsS3BucketPrivate.BucketName,
 				"{AWS_S3_BUCKET_PUBLIC}":  cfg.AwsS3BucketPublic.BucketName,

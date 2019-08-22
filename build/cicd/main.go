@@ -55,7 +55,7 @@ func main() {
 		cli.StringFlag{
 			Name:        "aws-region",
 			Usage:       "AWS Region",
-			EnvVar:      "AWS_REGION",
+			EnvVar:      "AWS_DEFAULT_REGION",
 			Destination: &awsCredentials.Region,
 		},
 		cli.BoolFlag{
