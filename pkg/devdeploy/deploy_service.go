@@ -1589,23 +1589,25 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		staticDir := targetService.StaticFilesDir
 
 		if _, err := os.Stat(staticDir); err != nil {
-			return errors.Wrapf(err, "Static directory '%s' does not exist.", staticDir)
-		}
+			if !os.IsNotExist(err) {
+				return errors.Wrapf(err, "Static directory '%s' does not exist.", staticDir)
+			}
+		} else {
+			err := SyncPublicS3Files(cfg.AwsSession(),
+				cfg.AwsS3BucketPublic.BucketName,
+				targetService.StaticFilesS3Prefix,
+				staticDir)
+			if err != nil {
+				return errors.Wrapf(err, "Failed to sync static files from %s to s3://%s/%s",
+					staticDir,
+					cfg.AwsS3BucketPublic.BucketName,
+					targetService.StaticFilesS3Prefix)
+			}
 
-		err := SyncPublicS3Files(cfg.AwsSession(),
-			cfg.AwsS3BucketPublic.BucketName,
-			targetService.StaticFilesS3Prefix,
-			staticDir)
-		if err != nil {
-			return errors.Wrapf(err, "Failed to sync static files from %s to s3://%s/%s",
-				staticDir,
+			log.Printf("\t%s\tFiles uploaded to s3://%s/%s.\n", Success,
 				cfg.AwsS3BucketPublic.BucketName,
 				targetService.StaticFilesS3Prefix)
 		}
-
-		log.Printf("\t%s\tFiles uploaded to s3://%s/%s.\n", Success,
-			cfg.AwsS3BucketPublic.BucketName,
-			targetService.StaticFilesS3Prefix)
 	}
 
 	// Step 11: Wait for the updated or created service to enter a stable state.
