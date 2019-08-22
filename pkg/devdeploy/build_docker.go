@@ -36,7 +36,7 @@ type BuildDockerRequest struct {
 	IsLambda       bool   `validate:"omitempty"`
 	LambdaS3Key    string `validate:"required_with=IsLambda"`
 	LambdaS3Bucket string `validate:"required_with=IsLambda"`
-	TargetLayer          string `validate:"omitempty" example:"lambda"`
+	TargetLayer    string `validate:"omitempty" example:"lambda"`
 
 	BuildArgs map[string]string `validate:"omitempty"`
 }

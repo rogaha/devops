@@ -4,6 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
@@ -16,12 +23,6 @@ import (
 	"github.com/pkg/errors"
 	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 	"gopkg.in/go-playground/validator.v9"
-	"io/ioutil"
-	"log"
-	"net/url"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 // SetupDeploymentEnv ensures all the resources for the project are setup before deploying a single ECS service or
