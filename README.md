@@ -312,9 +312,9 @@ instance will be a dedicated host since we need it always up and running, thus i
     sudo gitlab-runner register
     ```    
     Notes: 
-    * When asked for gitlab-ci tags, enter `master,dev,dev-*`
-        * This will limit commits to the master or dev branches from triggering the pipeline to run. This includes a 
-        wildcard for any branch named with the prefix `dev-`.
+    * When asked for gitlab-ci tags, enter `master,prod,prod-*`
+        * This will limit commits to the master or prod branches from triggering the pipeline to run. This includes a 
+        wildcard for any branch named with the prefix `prod-`.
     * When asked the executor type, enter `docker+machine`
     * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.12-docker`
         
@@ -429,7 +429,7 @@ rather large as each permission is granted individually. A copy of the statement
 
 3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
 called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 
-created from step 1 `saas-starter-kit-deploy`
+created from step 2 `saas-starter-kit-deploy`
 
 4. Set your AWS credentials as [environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html). 
 These can also be passed into _cicd_ as command line options. 

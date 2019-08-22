@@ -302,7 +302,7 @@ Access/Secret Keys are required
     --dry-run                         print out the deploy details
     ``` 
             
-* `schema` - Runs the database migration
+* `schema` - Runs the database migration using credentials from AWS Secrets Manager. 
 
     ```bash
     $ cicd -env [dev|stage|prod] schema

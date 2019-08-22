@@ -68,9 +68,8 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 		ctx.EnableHTTPS = true
 		ctx.StaticFilesS3Enable = true
 	} else {
-		// Only a single deployment env ATM, so default to true.
-		ctx.EnableHTTPS = true
-		ctx.StaticFilesS3Enable = true
+		ctx.EnableHTTPS = false
+		ctx.StaticFilesS3Enable = false
 	}
 
 	// =========================================================================

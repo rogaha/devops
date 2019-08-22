@@ -203,8 +203,8 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 	// The base s3 key prefix used to upload static files.
 	cfg.AwsS3BucketPublicKeyPrefix = "/public"
 
-	// For production, enable Cloudfront CND for all static files to avoid serving them from the slower S3 option.
-	if true || cfg.Env == EnvProd {
+	// For production, enable Cloudfront CDN for all static files to avoid serving them from the slower S3 option.
+	if cfg.Env == EnvProd {
 		cfg.AwsS3BucketPublic.CloudFront = &devdeploy.AwsS3BucketCloudFront{
 			// S3 key prefix to request your content from a directory in your Amazon S3 bucket.
 			OriginPath: cfg.AwsS3BucketPublicKeyPrefix,
