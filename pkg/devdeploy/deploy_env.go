@@ -434,15 +434,28 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 				*cacheCluster.EngineVersion)
 
 			customCacheParameterGroupName = strings.Replace(customCacheParameterGroupName, ".", "-", -1)
+			
+			// Check to see if the custom cache parameter group has already been created.
+			var createCustomParamGroup bool
+			_, err = svc.DescribeCacheParameterGroups(&elasticache.DescribeCacheParameterGroupsInput{
+				CacheParameterGroupName: aws.String(customCacheParameterGroupName),
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); ok && aerr.Code() == elasticache.ErrCodeCacheParameterGroupNotFoundFault {
+					createCustomParamGroup = true
+				} else {
+					return errors.Wrapf(err, "Failed to describe cache parameter group '%s'", cacheClusterId)
+				}
+			}
 
 			// If the cache cluster is using the default parameter group, create a new custom group.
-			if strings.HasPrefix(*cacheCluster.CacheParameterGroup.CacheParameterGroupName, "default") {
+			if createCustomParamGroup && strings.HasPrefix(*cacheCluster.CacheParameterGroup.CacheParameterGroupName, "default") {
 				// Lookup the group family from the current cache parameter group.
 				descRes, err := svc.DescribeCacheParameterGroups(&elasticache.DescribeCacheParameterGroupsInput{
 					CacheParameterGroupName: cacheCluster.CacheParameterGroup.CacheParameterGroupName,
 				})
 				if err != nil {
-					if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != elasticache.ErrCodeCacheClusterNotFoundFault {
+					if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != elasticache.ErrCodeCacheParameterGroupNotFoundFault {
 						return errors.Wrapf(err, "Failed to describe cache parameter group '%s'", cacheClusterId)
 					}
 				}
