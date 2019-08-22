@@ -3,6 +3,7 @@ module gitlab.com/geeks-accelerator/oss/devops
 go 1.12
 
 require (
+	github.com/Masterminds/semver v1.4.2
 	github.com/aws/aws-sdk-go v1.23.0
 	github.com/bobesa/go-domain-util v0.0.0-20180815122459-1d708c097a6a
 	github.com/geeks-accelerator/sqlxmigrate v0.0.0-20190527223850-4a863a2d30db

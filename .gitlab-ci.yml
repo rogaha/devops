@@ -19,6 +19,7 @@ stages:
   - build:prod
   - migrate:prod
   - deploy:prod
+  - release:prod
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
@@ -123,3 +124,14 @@ aws-lambda-python-ddlogs:deploy:prod:
     TARGET_REF: 'aws-lambda-python-ddlogs'
     AWS_USE_ROLE: 'true'
   #when: manual
+
+tag:release:prod:
+  stage: release:prod
+  script:
+    - 'go install ./cmd/devops'
+    - 'git tag $(devops semver inc-patch -version=$(git tag | tail -n 1))'
+    - 'git push --tags'
+  tags:
+    - master
+  only:
+    - master
