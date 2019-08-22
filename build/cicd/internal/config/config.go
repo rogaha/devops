@@ -31,9 +31,6 @@ const (
 	// EnableRdsServerless will use the Aurora database engine that scales the capacity based on database load. This is
 	// a good option for intermittent or unpredictable workloads.
 	EnableRdsServerless = true
-
-	// EnableServiceServerless will deploy services as an AWS Lambda function hooked up to an API gateway.
-	EnableServiceServerless = true
 )
 
 // Env defines the target deployment environment.

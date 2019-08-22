@@ -19,6 +19,7 @@ type BuildLambda struct {
 
 	// Optional flags.
 	DockerBuildContext string `validate:"omitempty" example:"."`
+	TargetLayer  string `validate:"omitempty" example:"lambda"`
 	NoCache            bool   `validate:"omitempty" example:"false"`
 	NoPush             bool   `validate:"omitempty" example:"false"`
 	BuildArgs          map[string]string
@@ -69,6 +70,7 @@ func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *BuildLamb
 		BuildDir:           targetFunc.BuildDir,
 		Dockerfile:         targetFunc.Dockerfile,
 		DockerBuildContext: targetFunc.DockerBuildContext,
+		TargetLayer: targetFunc.TargetLayer,
 
 		AwsCredentials: cfg.AwsCredentials,
 
