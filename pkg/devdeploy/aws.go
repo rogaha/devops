@@ -128,28 +128,14 @@ func EcrPurgeImages(awsCredentials AwsCredentials, ecrRepositoryName string, max
 	}
 
 	svc := ecr.New(awsCredentials.Session())
-
-	// First list all the image IDs for the repository.
-	var imgIds []*ecr.ImageIdentifier
-	err := svc.ListImagesPages(&ecr.ListImagesInput{
-		RepositoryName: aws.String(ecrRepositoryName),
-	}, func(res *ecr.ListImagesOutput, lastPage bool) bool {
-		imgIds = append(imgIds, res.ImageIds...)
-		return !lastPage
-	})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list images for repository '%s'", ecrRepositoryName)
-	}
-
+	
+	// Describe all the image IDs to determine oldest.
 	var (
 		ts       []int
 		tsImgIds = map[int][]*ecr.ImageIdentifier{}
 	)
-
-	// Describe all the image IDs to determine oldest.
-	err = svc.DescribeImagesPages(&ecr.DescribeImagesInput{
+	err := svc.DescribeImagesPages(&ecr.DescribeImagesInput{
 		RepositoryName: aws.String(ecrRepositoryName),
-		ImageIds:       imgIds,
 	}, func(res *ecr.DescribeImagesOutput, lastPage bool) bool {
 		for _, img := range res.ImageDetails {
 

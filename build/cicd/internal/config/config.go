@@ -39,7 +39,7 @@ var (
 )
 
 // List of env names used by main.go for help.
-var EnvNames = []Function{
+var EnvNames = []Env{
 	EnvDev,
 	EnvStage,
 	EnvProd,

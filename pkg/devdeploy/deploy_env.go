@@ -434,7 +434,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 				*cacheCluster.EngineVersion)
 
 			customCacheParameterGroupName = strings.Replace(customCacheParameterGroupName, ".", "-", -1)
-			
+
 			// Check to see if the custom cache parameter group has already been created.
 			var createCustomParamGroup bool
 			_, err = svc.DescribeCacheParameterGroups(&elasticache.DescribeCacheParameterGroupsInput{

@@ -28,7 +28,7 @@ func main() {
 	// New CLI application.
 	app := cli.NewApp()
 	app.Name = "devops"
-	app.Version = "1.1"
+	app.Version = "1.0.1"
 	app.Author = "Lee Brown"
 	app.Email = "lee@geeksinthewoods.com"
 
