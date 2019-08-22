@@ -346,6 +346,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 			DBClusterIdentifier:   cfg.ProjectName + "-" + cfg.Env,
 			Engine:                "aurora-postgresql",
 			EngineMode:            "serverless",
+			DatabaseName:          "shared",
 			MasterUsername:        "god",
 			Port:                  5432,
 			BackupRetentionPeriod: aws.Int64(7),
