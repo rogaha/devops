@@ -110,10 +110,14 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 	// Service dependant settings.
 	switch serviceName {
 	case ServiceAwsEcsGoWebApi:
+		if cfg.Env == EnvProd {
+			ctx.ServiceHostPrimary = "devops.example.saasstartupkit.com"
 
-		ctx.ServiceHostPrimary = fmt.Sprintf("%s.devops.example.saasstartupkit.com", cfg.Env)
-		ctx.ServiceHostNames = []string{
-			fmt.Sprintf("api.%s.devops.example.saasstartupkit.com", cfg.Env),
+			ctx.ServiceHostNames = []string{
+				fmt.Sprintf("api.%s.devops.example.saasstartupkit.com", cfg.Env),
+			}
+		} else {
+			ctx.ServiceHostPrimary = fmt.Sprintf("api.%s.devops.example.saasstartupkit.com", cfg.Env)
 		}
 
 		// Define the service task definition with a function to enable use of config and deploy details.

@@ -18,6 +18,7 @@ that covers how to setup your GitLab CI/CD pipeline that uses autoscaling GitLab
     * [Configuration](#configuration)
     * [Database Schema](#database-schema)
     * [GitLab CI/CD](#gitlab-cicd)
+        * [Setup](#setup-gitlab-cicd)
 - [Usage](#usage)
     * [AWS Permissions](#aws-permissions)
 - [Contributions](#contributions)
@@ -172,17 +173,24 @@ database table to check if it’s already been executed. Thus, schema migrations
 are defined as a function to enable complex migrations so results from query manipulated before being piped to the next 
 query. 
 
+**Migrations should be backwards compatible with the existing deployed code.** Refrain from `drop table`. Instead of 
+renaming columns, add a new column and copy the data from the old column using an `update`. 
+
+Ideally migrations should be idempotent to avoid possible data loss since data could have been generated between 
+migration runs.
+
 
 ### GitLab CI/CD
 
 _cicd_ command is primary executed by a GitLab runner. After you have updated the configuration for your project, you 
-will need to configure GitLab CI/CD to execute the build and deployment. This project has example 
+will need to configure GitLab CI/CD to execute the build and deployment. This project has an example 
 [.gitlab-ci.yml](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/.gitlab-ci.yml) that should be placed in 
 your project root. 
 
 The project includes a Postgres database which adds an additional resource dependency when deploying the 
 project. It is important to know that the tasks running schema migration for the Postgres database can not run as shared 
-GitLab Runners since they will be outside the deployment AWS VPC. There are two options here: 
+GitLab Runners since they will be outside the deployment [AWS VPC](https://docs.aws.amazon.com/vpc/latest/userguide/what-is-amazon-vpc.html). 
+There are two options here: 
 1. Enable the AWS RDS database to be publicly available (not recommended).
 2. Run your own GitLab runners inside the same AWS VPC and grant access for them to communicate with the database.
 
@@ -190,13 +198,18 @@ This project has opted to implement option 2 and thus setting up the deployment 
 
 Note that using shared runners hosted by GitLab also requires AWS credentials to be input into GitLab for configuration.  
 
-Hosted your own GitLab runners uses AWS Roles instead of hardcoding the access key ID and secret access key in GitLab and 
-in other configuration files. And since this project is open-source, we wanted to avoid sharing our AWS credentials.
+Hosting your own GitLab runners will use an [AWS Role](https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#use-roles-with-ec2) 
+instead of hardcoding the access key ID and secret access key in GitLab and in other configuration files. And since this 
+project is open-source, we want to avoid sharing our AWS credentials, while also making a smaller surface area of 
+privileged infrastructure information (only AWS).
 
  
-**Setup GitLab CI/CD**
+#### Setup GitLab CI/CD
 
 Below outlines the basic steps to setup [Autoscaling GitLab Runner on AWS](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/). 
+
+You can also check out the [full presentation](https://docs.google.com/presentation/d/1sRFQwipziZlxBtN7xuF-ol8vtUqD55l_4GE-4_ns-qM/edit?usp=sharing) 
+that covers the same steps.
 
 If you don't have an AWS account, signup for one now and then proceed with the deployment setup. 
 
@@ -207,18 +220,26 @@ create a new zone is Route 53 and update the DNS for the domain name when your r
 required to hosted the DNS on Route 53 so DNS entries can be managed by this deploy tool. It is possible to use a 
 [subdomain that uses Route 53 as the DNS service without migrating the parent domain](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingNewSubdomain.html). 
 
-1. Define an [AWS IAM Role](https://console.aws.amazon.com/iam/home?region=us-west-2#/roles$new?step=type) that will be
+1. If you have already setup [AWS Permissions](#aws-permissions) for local usage, then the IAM policy 
+`saas-starter-kit-deploy` should already have been created. If not, create a new 
+[AWS IAM Policy](https://console.aws.amazon.com/iam/home?region=us-west-2#/policies$new?step=edit) called 
+`saas-starter-kit-deploy` with defined JSON statement instead of using the visual editor. The statement is rather large 
+as each permission is granted individually. A copy of the statement is stored in the repo at 
+[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
+
+
+2. Define an [AWS IAM Role](https://console.aws.amazon.com/iam/home?region=us-west-2#/roles$new?step=type) that will be
 attached to the GitLab Runner instances. The role will need permission to scale (EC2), update the cache (via S3) and 
 perform the project specific deployment commands.
     ```
     Trusted Entity: AWS Service
     Service that will use this role: EC2 
-    Attach permissions policies:  AmazonEC2FullAccess, AmazonS3FullAccess, saas-starter-kit-deploy 
+    Attach permissions policies:  AmazonEC2FullAccess, AmazonS3FullAccess 
     Role Name: SaasStarterKitEc2RoleForGitLabRunner
     Role Description: Allows GitLab runners hosted on EC2 instances to call AWS services on your behalf.
     ``` 
 
-2. Launch a new [AWS EC2 Instance](https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#LaunchInstanceWizard). 
+3. Launch a new [AWS EC2 Instance](https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#LaunchInstanceWizard). 
 `GitLab Runner` will be installed on this instance and will serve as the bastion that spawns new instances. This 
 instance will be a dedicated host since we need it always up and running, thus it will be the standard costs apply. 
 
@@ -228,7 +249,7 @@ instance will be a dedicated host since we need it always up and running, thus i
     Instance Type: t2.micro 
     ``` 
 
-3. Configure Instance Details. 
+4. Configure Instance Details. 
 
     Note: Do not forget to select the IAM Role _SaasStarterKitEc2RoleForGitLabRunner_ 
     ```
@@ -248,18 +269,18 @@ instance will be a dedicated host since we need it always up and running, thus i
     Advanced Details: none 
     ```
     
-4. Add Storage. Increase the volume size for the root device to 30 GiB.
+5. Add Storage. Increase the volume size for the root device to 30 GiB.
     ```    
     Volume Type |   Device      | Size (GiB) |  Volume Type 
     Root        |   /dev/xvda   | 30        |  General Purpose SSD (gp2)
     ```
 
-5. Add Tags.
+6. Add Tags.
     ```
     Name:  gitlab-runner 
     ``` 
     
-6. Configure Security Group. Create a new security group with the following details:
+7. Configure Security Group. Create a new security group with the following details:
     ``` 
     Name: gitlab-runner
     Description: Gitlab runners for running CICD.
@@ -268,10 +289,10 @@ instance will be a dedicated host since we need it always up and running, thus i
         SSH         | TCP       | 22            | My IP     | SSH access for setup.                        
     ```        
     
-7. Review and Launch instance. Select an existing key pair or create a new one. This will be used to SSH into the 
+8. Review and Launch instance. Select an existing key pair or create a new one. This will be used to SSH into the 
     instance for additional configuration. 
      
-8. Update the security group to reference itself. The instances need to be able to communicate between each other. 
+9. Update the security group to reference itself. The instances need to be able to communicate between each other. 
 
     Navigate to edit the security group and add the following two rules where `SECURITY_GROUP_ID` is replaced with the 
     name of the security group created in step 6.
@@ -282,32 +303,35 @@ instance will be a dedicated host since we need it always up and running, thus i
         SSH         | TCP       | 22            | SECURITY_GROUP_ID | SSH access for setup.                        
     ```     
     
-8. SSH into the newly created instance. 
+10. SSH into the newly created instance. 
 
     ```bash
     ssh -i ~/saas-starter-kit-uswest2-gitlabrunner.pem ec2-user@ec2-52-36-105-172.us-west-2.compute.amazonaws.com
-    ``` 
-     Note: If you get the error `Permissions 0666 are too open`, then you will need to `chmod 400 FILENAME`
+    ```
+     
+    * If you get the error `Permissions 0666 are too open`, then you will need to `chmod 400 FILENAME`. 
+    * If you get the error `permission denied`, check that they're using `ec2-user` as the username.
+     
        
-9. Install GitLab Runner from the [official GitLab repository](https://docs.gitlab.com/runner/install/linux-repository.html)
+11. Install GitLab Runner from the [official GitLab repository](https://docs.gitlab.com/runner/install/linux-repository.html)
     ```bash 
     curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash
-    sudo yum install gitlab-runner
+    yes | sudo yum install gitlab-runner
     ``` 
     
-10. [Install Docker Community Edition](https://docs.docker.com/install/).
+12. [Install Docker Community Edition](https://docs.docker.com/install/).
     ```bash 
-    sudo yum install docker
+    yes | sudo yum install docker
     ```
     
-11. [Install Docker Machine](https://docs.docker.com/machine/install-machine/).
+13. [Install Docker Machine](https://docs.docker.com/machine/install-machine/).
     ```bash
     base=https://github.com/docker/machine/releases/download/v0.16.0 &&
       curl -L $base/docker-machine-$(uname -s)-$(uname -m) >/tmp/docker-machine &&
       sudo install /tmp/docker-machine /usr/sbin/docker-machine
     ```
     
-12. [Register the runner](https://docs.gitlab.com/runner/register/index.html).
+14. [Register the runner](https://docs.gitlab.com/runner/register/index.html).
     ```bash
     sudo gitlab-runner register
     ```    
@@ -315,10 +339,11 @@ instance will be a dedicated host since we need it always up and running, thus i
     * When asked for gitlab-ci tags, enter `master,prod,prod-*`
         * This will limit commits to the master or prod branches from triggering the pipeline to run. This includes a 
         wildcard for any branch named with the prefix `prod-`.
+        * If you would like to setup a stage environment, then you could add the additional tags `stage,stage-*`
     * When asked the executor type, enter `docker+machine`
     * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.12-docker`
         
-13. [Configuring the GitLab Runner](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/#configuring-the-gitlab-runner)   
+15. [Configuring the GitLab Runner](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/#configuring-the-gitlab-runner)   
 
     ```bash
     sudo vim /etc/gitlab-runner/config.toml
@@ -422,9 +447,11 @@ Create an AWS user for development purposes. This user is not needed for the bui
 
 1. You will need an existing AWS account or create a new AWS account.
 
-2. Define a new [AWS IAM Policy](https://console.aws.amazon.com/iam/home?region=us-west-2#/policies$new?step=edit) 
-called `saas-starter-kit-deploy` with a defined JSON statement instead of using the visual editor. The statement is 
-rather large as each permission is granted individually. A copy of the statement is stored in the repo at 
+2. An [AWS IAM Policy](https://console.aws.amazon.com/iam/home?region=us-west-2#/policies$new?step=edit) is needed for 
+_cdcd_ to setup the configured AWS infrastructure and deploy services/functions. If you haven't setup the 
+[Setup GitLab CI/CD](#setup-gitlab-cicd) then you will need to define a new IAM policy called `saas-starter-kit-deploy` 
+with a defined JSON statement instead of using the visual editor. The statement is rather large as each permission is 
+granted individually. A copy of the statement is stored in the repo at 
 [configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
 
 3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
