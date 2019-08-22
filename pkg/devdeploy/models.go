@@ -606,7 +606,7 @@ type AwsRdsDBCluster struct {
 	CopyTagsToSnapshot *bool `type:"boolean"`
 
 	// Tags to assign to the DB cluster.
-	Tags []*Tag `type:"list"`
+	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *rds.CreateDBClusterInput) error `json:"-"`

@@ -1,11 +1,9 @@
 package devdeploy
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/cloudfront"
-	"github.com/aws/aws-sdk-go/service/iam"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"io/ioutil"
 	"log"
 	"net/url"
@@ -15,11 +13,15 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/elasticache"
+	"github.com/aws/aws-sdk-go/service/iam"
 	"github.com/aws/aws-sdk-go/service/rds"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/pkg/errors"
+	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -199,7 +201,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 			return errors.New("Failed to find any subnets, expected at least 1")
 		}
 
-		log.Printf("\t\tVPC '%s' has %d subnets", cfg.AwsEc2Vpc.VpcId)
+		log.Printf("\t\tVPC '%s' has %d subnets", cfg.AwsEc2Vpc.VpcId, len(subnets))
 		for _, sn := range subnets {
 			cfg.AwsEc2Vpc.subnetIds = append(cfg.AwsEc2Vpc.subnetIds, *sn.SubnetId)
 			log.Printf("\t\t\tSubnet: %s", *sn.SubnetId)
@@ -621,6 +623,35 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		// The status of the cluster.
 		log.Printf("\t\t\tStatus: %s", *dbCluster.Status)
 
+		// If the instance is not active because it was recently created, wait for it to become active.
+		if *dbCluster.Status != "available" {
+			retryFunc := func() (bool, error) {
+				// Try to find a RDS database cluster using cluster identifier.
+				descRes, err := svc.DescribeDBClusters(&rds.DescribeDBClustersInput{
+					DBClusterIdentifier: aws.String(dBClusterIdentifier),
+				})
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != rds.ErrCodeDBClusterNotFoundFault {
+						return false, errors.Wrapf(err, "Failed to describe database cluster '%s'", dBClusterIdentifier)
+					}
+				} else if len(descRes.DBClusters) > 0 {
+					dbCluster = descRes.DBClusters[0]
+				}
+
+				log.Printf("\t\t\tStatus: %s.", *dbCluster.Status)
+
+				if *dbCluster.Status == "available" {
+					return true, nil
+				}
+
+				return false, nil
+			}
+			err = retry.Retry(context.Background(), nil, retryFunc)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Update the secret with the DB cluster details. This happens after DB create to help address when the
 		// DB cluster was successfully created, but the secret failed to save. The DB details host should be empty or
 		// match the current cluster endpoint.
@@ -633,6 +664,13 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 			cfg.DBConnInfo.Database = *dbCluster.DatabaseName
 			cfg.DBConnInfo.Driver = *dbCluster.Engine
 			cfg.DBConnInfo.DisableTLS = false
+
+			switch cfg.DBConnInfo.Driver {
+			case "aurora-postgresql":
+				cfg.DBConnInfo.Driver = "postgres"
+			case "aurora", "aurora-mysql":
+				cfg.DBConnInfo.Driver = "mysql"
+			}
 
 			// Json encode the DB details to be stored as text via AWS Secrets Manager.
 			dat, err := json.Marshal(cfg.DBConnInfo)
@@ -656,7 +694,7 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 		}
 
 		// Execute the post AwsRdsDBCluster method if defined.
-		if created && cfg.AwsRdsDBInstance.AfterCreate != nil {
+		if created && cfg.AwsRdsDBCluster.AfterCreate != nil {
 			err = cfg.AwsRdsDBCluster.AfterCreate(dbCluster, cfg.DBConnInfo)
 			if err != nil {
 				return err
@@ -806,6 +844,13 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 				cfg.DBConnInfo.Database = *dbInstance.DBName
 				cfg.DBConnInfo.Driver = *dbInstance.Engine
 				cfg.DBConnInfo.DisableTLS = false
+
+				switch cfg.DBConnInfo.Driver {
+				case "aurora-postgresql":
+					cfg.DBConnInfo.Driver = "postgres"
+				case "aurora", "aurora-mysql":
+					cfg.DBConnInfo.Driver = "mysql"
+				}
 
 				// Json encode the DB details to be stored as text via AWS Secrets Manager.
 				dat, err := json.Marshal(cfg.DBConnInfo)
