@@ -10,7 +10,7 @@ import (
 	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
-// RunSchemaMigrationsForTargetEnv executes the build commands for a target service.
+// RunSchemaMigrationsForTargetEnv executes schema migrations for the target environment.
 func RunSchemaMigrationsForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCredentials, targetEnv Env, isUnittest bool) error {
 
 	cfgCtx, err := NewConfigContext(targetEnv, awsCredentials)

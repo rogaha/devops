@@ -10,12 +10,12 @@ before_script:
   - 'go install ./build/cicd'
 
 stages:
-#  - build:dev
-#  - migrate:dev
-#  - deploy:dev
-#  - build:stage
-#  - migrate:stage
-#  - deploy:stage
+  - build:dev
+  - migrate:dev
+  - deploy:dev
+  - build:stage
+  - migrate:stage
+  - deploy:stage
   - build:prod
   - migrate:prod
   - deploy:prod
