@@ -37,7 +37,7 @@ between your applications and your deployment environment. What does this entail
  
 2. Configurations are migrated as apart of your build pipeline and is therefore treated the same as application code. 
 
-3. You can customizing any of the configuration code without having to deal with JSON or YAML files. 
+3. You can customize any of the configuration code without having to deal with JSON or YAML files. 
 
 This project was developed to support the [SaaS Startup Kit](https://gitlab.com/geeks-accelerator/oss/saas-starter-kit) 
 to facilitate getting code to production with minimal additional configuration. 
@@ -82,7 +82,7 @@ the install instructions for Go](http://golang.org/doc/install.html).
 
 To install _devops_, simply run:
 ```
-$ go get gitlab.com/geeks-accelerator/oss/devops/cmd/devops
+$ go get -v gitlab.com/geeks-accelerator/oss/devops/cmd/devops
 ```
 
 Make sure your `PATH` includes the `$GOPATH/bin` directory so your commands can
@@ -102,7 +102,7 @@ $ devops inject-build cicd -project $GOPATH/src/gitlab.com/geeks-accelerator/oss
 
 You should only run this command once as it will only create files that don't exist. It will not update or overwrite 
 existing files. Once this command is executed, you are in charge of maintaining your copy _cicd_ as it will contain 
-configuration details only relevant to your project.  
+configuration details only relevant to your project. Don't forget to add this to folder to git. 
 
 The `build/cicd` directory should have been added to your project path with the following structure:
 ```
