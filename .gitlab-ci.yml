@@ -10,12 +10,12 @@ before_script:
   - 'go install ./build/cicd'
 
 stages:
-  - build:dev
-  - migrate:dev
-  - deploy:dev
-  - build:stage
-  - migrate:stage
-  - deploy:stage
+#  - build:dev
+#  - migrate:dev
+#  - deploy:dev
+#  - build:stage
+#  - migrate:stage
+#  - deploy:stage
   - build:prod
   - migrate:prod
   - deploy:prod
@@ -56,6 +56,7 @@ db:migrate:prod:
   variables:
     TARGET_ENV: 'prod'
     AWS_USE_ROLE: 'true'
+  #when: manual
 
 aws-ecs-go-web-api:build:prod:
   <<: *build_tmpl
@@ -88,6 +89,7 @@ aws-ecs-go-web-api:deploy:prod:
     TARGET_TYPE: 'service'
     TARGET_REF: 'aws-ecs-go-web-api'
     AWS_USE_ROLE: 'true'
+  #when: manual
 
 aws-lambda-python-ddlogs:build:prod:
   <<: *build_tmpl
@@ -120,3 +122,4 @@ aws-lambda-python-ddlogs:deploy:prod:
     TARGET_TYPE: 'function'
     TARGET_REF: 'aws-lambda-python-ddlogs'
     AWS_USE_ROLE: 'true'
+  #when: manual
