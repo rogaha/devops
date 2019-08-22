@@ -36,6 +36,7 @@ type BuildDockerRequest struct {
 	IsLambda       bool   `validate:"omitempty"`
 	LambdaS3Key    string `validate:"required_with=IsLambda"`
 	LambdaS3Bucket string `validate:"required_with=IsLambda"`
+	TargetLayer    string `validate:"omitempty" example:"lambda"`
 
 	BuildArgs map[string]string `validate:"omitempty"`
 }
@@ -181,6 +182,10 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 
 	for k, v := range req.BuildArgs {
 		buildCmd = append(buildCmd, "--build-arg", k+"="+v)
+	}
+
+	if req.TargetLayer != "" {
+		buildCmd = append(buildCmd, "--target", req.TargetLayer)
 	}
 
 	buildCmd = append(buildCmd, "-t", req.ReleaseImage)
