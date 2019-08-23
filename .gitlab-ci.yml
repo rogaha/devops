@@ -135,3 +135,6 @@ tag:release:prod:
     - master
   only:
     - master
+  dependencies:
+    - 'aws-ecs-go-web-api:deploy:prod'
+    - 'aws-lambda-python-ddlogs:deploy:prod'
