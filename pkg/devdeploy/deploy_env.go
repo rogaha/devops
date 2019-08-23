@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
@@ -1145,57 +1146,116 @@ func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) err
 
 		// Add all the defined lifecycle rules for the bucket.
 		if len(s3Bucket.LifecycleRules) > 0 {
-			_, err := svc.PutBucketLifecycleConfiguration(&s3.PutBucketLifecycleConfigurationInput{
+			res, err := svc.GetBucketLifecycleConfiguration(&s3.GetBucketLifecycleConfigurationInput{
 				Bucket: aws.String(bucketName),
-				LifecycleConfiguration: &s3.BucketLifecycleConfiguration{
-					Rules: s3Bucket.LifecycleRules,
-				},
 			})
 			if err != nil {
-				return errors.Wrapf(err, "Failed to configure lifecycle rule for s3 bucket '%s'", bucketName)
+				return errors.Wrapf(err, "Failed to get lifecycle rules for s3 bucket '%s'", bucketName)
 			}
 
-			for _, r := range s3Bucket.LifecycleRules {
-				log.Printf("\t\t\t\tAdded lifecycle '%s'\n", *r.ID)
+			if diff := cmp.Diff( s3Bucket.LifecycleRules, res.Rules); diff != "" {
+				log.Printf("\t\t\t\tLifecycle rules diff - %s\n", diff)
+
+				_, err = svc.PutBucketLifecycleConfiguration(&s3.PutBucketLifecycleConfigurationInput{
+					Bucket: aws.String(bucketName),
+					LifecycleConfiguration: &s3.BucketLifecycleConfiguration{
+						Rules: s3Bucket.LifecycleRules,
+					},
+				})
+				if err != nil {
+					return errors.Wrapf(err, "Failed to configure lifecycle rule for s3 bucket '%s'", bucketName)
+				}
+
+				for _, r := range s3Bucket.LifecycleRules {
+					log.Printf("\t\t\t\tAdded lifecycle '%s'\n", *r.ID)
+				}
 			}
 		}
 
 		// Add all the defined CORS rules for the bucket.
 		if len(s3Bucket.CORSRules) > 0 {
-			_, err := svc.PutBucketCors(&s3.PutBucketCorsInput{
+			res, err := svc.GetBucketCors(&s3.GetBucketCorsInput{
 				Bucket: aws.String(bucketName),
-				CORSConfiguration: &s3.CORSConfiguration{
-					CORSRules: s3Bucket.CORSRules,
-				},
 			})
 			if err != nil {
-				return errors.Wrapf(err, "Failed to put CORS on s3 bucket '%s'", bucketName)
+				return errors.Wrapf(err, "Failed to get CORS rules for s3 bucket '%s'", bucketName)
 			}
-			log.Println("\t\t\t\tUpdated CORS")
-		}
 
-		// Block public access for all non-public buckets.
-		if s3Bucket.PublicAccessBlock != nil {
-			_, err := svc.PutPublicAccessBlock(&s3.PutPublicAccessBlockInput{
-				Bucket:                         aws.String(bucketName),
-				PublicAccessBlockConfiguration: s3Bucket.PublicAccessBlock,
-			})
-			if err != nil {
-				return errors.Wrapf(err, "Failed to block public access for s3 bucket '%s'", bucketName)
+			if diff := cmp.Diff( s3Bucket.CORSRules, res.CORSRules); diff != "" {
+				log.Printf("\t\t\t\tCORS rules diff - %s\n", diff)
+
+				_, err := svc.PutBucketCors(&s3.PutBucketCorsInput{
+					Bucket: aws.String(bucketName),
+					CORSConfiguration: &s3.CORSConfiguration{
+						CORSRules: s3Bucket.CORSRules,
+					},
+				})
+				if err != nil {
+					return errors.Wrapf(err, "Failed to put CORS rules on s3 bucket '%s'", bucketName)
+				}
+				log.Println("\t\t\t\tUpdated CORS")
 			}
-			log.Println("\t\t\t\tBlocked public access")
 		}
 
 		// Add the bucket policy if not empty.
 		if s3Bucket.Policy != "" {
-			_, err := svc.PutBucketPolicy(&s3.PutBucketPolicyInput{
+
+			// Remove the whitespace from the provided policy to ensure the diff compare works.
+			var policyMap map[string]interface{}
+			if err := json.Unmarshal([]byte(s3Bucket.Policy), &policyMap); err != nil {
+				return errors.Wrapf(err, "Failed JSON decode policy for s3 bucket '%s'", bucketName)
+			}
+
+			res, err := svc.GetBucketPolicy(&s3.GetBucketPolicyInput{
 				Bucket: aws.String(bucketName),
-				Policy: aws.String(s3Bucket.Policy),
 			})
 			if err != nil {
-				return errors.Wrapf(err, "Failed to put bucket policy for s3 bucket '%s'", bucketName)
+				return errors.Wrapf(err, "Failed to get bucket policy for s3 bucket '%s'", bucketName)
 			}
-			log.Println("\t\t\t\tUpdated bucket policy")
+
+			// Remove the whitespace from the provided policy to ensure the diff compare works.
+			var curMap map[string]interface{}
+			if res != nil && res.Policy != nil && *res.Policy != "" {
+				if err := json.Unmarshal([]byte(*res.Policy), &curMap); err != nil {
+					return errors.Wrapf(err, "Failed JSON decode policy for s3 bucket '%s'", bucketName)
+				}
+			}
+
+			if diff := cmp.Diff(policyMap, curMap); diff != "" {
+				log.Printf("\t\t\t\tPolicy diff - %s\n", diff)
+
+				_, err = svc.PutBucketPolicy(&s3.PutBucketPolicyInput{
+					Bucket: aws.String(bucketName),
+					Policy: aws.String(s3Bucket.Policy),
+				})
+				if err != nil {
+					return errors.Wrapf(err, "Failed to put bucket policy for s3 bucket '%s'", bucketName)
+				}
+				log.Println("\t\t\t\tUpdated bucket policy")
+			}
+		}
+
+		// Block public access for all non-public buckets.
+		if s3Bucket.PublicAccessBlock != nil {
+			res, err := svc.GetPublicAccessBlock(&s3.GetPublicAccessBlockInput{
+				Bucket: aws.String(bucketName),
+			})
+			if err != nil {
+				return errors.Wrapf(err, "Failed to get public access block for s3 bucket '%s'", bucketName)
+			}
+
+			if diff := cmp.Diff( s3Bucket.PublicAccessBlock, res.PublicAccessBlockConfiguration); diff != "" {
+				log.Printf("\t\t\t\tPublic access bloc diff - %s\n", diff)
+
+				_, err = svc.PutPublicAccessBlock(&s3.PutPublicAccessBlockInput{
+					Bucket:                         aws.String(bucketName),
+					PublicAccessBlockConfiguration: s3Bucket.PublicAccessBlock,
+				})
+				if err != nil {
+					return errors.Wrapf(err, "Failed to put public access block for s3 bucket '%s'", bucketName)
+				}
+				log.Println("\t\t\t\tBlocked public access")
+			}
 		}
 
 		if s3Bucket.CloudFront != nil {
@@ -1205,64 +1265,94 @@ func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) err
 			if s3Bucket.LocationConstraint != nil && *s3Bucket.LocationConstraint != "" {
 				bucketLoc = *s3Bucket.LocationConstraint
 			}
-
-			allowedMethods := &cloudfront.AllowedMethods{
-				Items: aws.StringSlice(s3Bucket.CloudFront.CachedMethods),
-			}
-			allowedMethods.Quantity = aws.Int64(int64(len(allowedMethods.Items)))
-
-			cacheMethods := &cloudfront.CachedMethods{
-				Items: aws.StringSlice(s3Bucket.CloudFront.CachedMethods),
-			}
-			cacheMethods.Quantity = aws.Int64(int64(len(cacheMethods.Items)))
-			allowedMethods.SetCachedMethods(cacheMethods)
-
-			domainId := "S3-" + s3Bucket.BucketName
 			domainName := fmt.Sprintf("%s.s3.%s.amazonaws.com", s3Bucket.BucketName, bucketLoc)
 
-			origins := &cloudfront.Origins{
-				Items: []*cloudfront.Origin{
-					&cloudfront.Origin{
-						Id:         aws.String(domainId),
-						DomainName: aws.String(domainName),
-						OriginPath: aws.String(s3Bucket.CloudFront.OriginPath),
-						S3OriginConfig: &cloudfront.S3OriginConfig{
-							OriginAccessIdentity: aws.String(""),
-						},
-						CustomHeaders: &cloudfront.CustomHeaders{
-							Quantity: aws.Int64(0),
-						},
-					},
-				},
-			}
-			origins.Quantity = aws.Int64(int64(len(origins.Items)))
+			cf := cloudfront.New(cfg.AwsSession())
 
-			s3Bucket.CloudFront.DistributionConfig.DefaultCacheBehavior.TargetOriginId = aws.String(domainId)
-			s3Bucket.CloudFront.DistributionConfig.DefaultCacheBehavior.AllowedMethods = allowedMethods
-			s3Bucket.CloudFront.DistributionConfig.Origins = origins
-
-			input, err := s3Bucket.CloudFront.Input()
+			res, err := cf.ListDistributions(&cloudfront.ListDistributionsInput{})
 			if err != nil {
-				return err
+				return errors.Wrapf(err, "Failed to list cloudfront distributions for s3 bucket '%s'", bucketName)
 			}
 
-			targetOriginId := *input.DistributionConfig.DefaultCacheBehavior.TargetOriginId
-
-			_, err = cloudfront.New(cfg.AwsSession()).CreateDistribution(input)
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != cloudfront.ErrCodeDistributionAlreadyExists) {
-					return errors.Wrapf(err, "Failed to create cloudfront distribution '%s'", targetOriginId)
+			var curDist *cloudfront.DistributionSummary
+			for _, d := range res.DistributionList.Items {
+				if d.Origins == nil || len(d.Origins.Items) == 0 {
+					continue
 				}
 
-				// If bucket found during create, returns it.
-				log.Printf("\t\t\t\t\tFound: %s.", targetOriginId)
-			} else {
+				var found bool
+				for _, i := range d.Origins.Items {
+					if *i.DomainName == domainName {
+						found = true
+						break
+					}
+				}
+
+				if found {
+					curDist = d
+					break
+				}
+			}
+
+			if curDist == nil {
+				allowedMethods := &cloudfront.AllowedMethods{
+					Items: aws.StringSlice(s3Bucket.CloudFront.CachedMethods),
+				}
+				allowedMethods.Quantity = aws.Int64(int64(len(allowedMethods.Items)))
+
+				cacheMethods := &cloudfront.CachedMethods{
+					Items: aws.StringSlice(s3Bucket.CloudFront.CachedMethods),
+				}
+				cacheMethods.Quantity = aws.Int64(int64(len(cacheMethods.Items)))
+				allowedMethods.SetCachedMethods(cacheMethods)
+
+				domainId := "S3-" + s3Bucket.BucketName
+
+				origins := &cloudfront.Origins{
+					Items: []*cloudfront.Origin{
+						&cloudfront.Origin{
+							Id:         aws.String(domainId),
+							DomainName: aws.String(domainName),
+							OriginPath: aws.String(s3Bucket.CloudFront.OriginPath),
+							S3OriginConfig: &cloudfront.S3OriginConfig{
+								OriginAccessIdentity: aws.String(""),
+							},
+							CustomHeaders: &cloudfront.CustomHeaders{
+								Quantity: aws.Int64(0),
+							},
+						},
+					},
+				}
+				origins.Quantity = aws.Int64(int64(len(origins.Items)))
+
+				s3Bucket.CloudFront.DistributionConfig.DefaultCacheBehavior.TargetOriginId = aws.String(domainId)
+				s3Bucket.CloudFront.DistributionConfig.DefaultCacheBehavior.AllowedMethods = allowedMethods
+				s3Bucket.CloudFront.DistributionConfig.Origins = origins
+
+				input, err := s3Bucket.CloudFront.Input()
+				if err != nil {
+					return err
+				}
+
+				targetOriginId := *input.DistributionConfig.DefaultCacheBehavior.TargetOriginId
+
+				_, err = cloudfront.New(cfg.AwsSession()).CreateDistribution(input)
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != cloudfront.ErrCodeDistributionAlreadyExists) {
+						return errors.Wrapf(err, "Failed to create cloudfront distribution '%s'", targetOriginId)
+					}
+				}
 
 				// If no bucket found during create, create new one.
-				log.Printf("\t\t\t\t\tCreated: %s.", targetOriginId)
+				log.Printf("\t\t\t\t\t%s created: %s.", domainName, targetOriginId)
+			} else {
+				// If bucket found during create, returns it.
+				log.Printf("\t\t\t\t\tFound: %s.", domainName)
 			}
 		}
 	}
+
+	os.Exit(1)
 
 	return nil
 }

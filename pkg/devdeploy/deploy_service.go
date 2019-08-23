@@ -256,7 +256,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 					// stamp.
 					//
 					// CallerReference is a required field
-					CallerReference: aws.String("devops-deploy"),
+					CallerReference: aws.String("devops-deploy" + zoneName),
 				})
 				if err != nil {
 					return errors.Wrapf(err, "Failed to create route 53 hosted zone '%s' for domain '%s'", zoneName, dn)
@@ -940,7 +940,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			ecsCluster = descRes.Clusters[0]
 		}
 
-		if ecsCluster == nil {
+		if ecsCluster == nil || *ecsCluster.Status == "inactive" {
 			input, err := targetService.AwsEcsCluster.Input()
 			if err != nil {
 				return err
