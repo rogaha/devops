@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
@@ -612,7 +613,7 @@ type AwsRdsDBCluster struct {
 	PreCreate func(input *rds.CreateDBClusterInput) error `json:"-"`
 
 	// Optional to provide method to be excecuted after database has been created.
-	AfterCreate func(res *rds.DBCluster, info *DBConnInfo) error `json:"-"`
+	AfterCreate func(res *rds.DBCluster, info *DBConnInfo, db *sqlx.DB) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *rds.DBCluster
@@ -826,7 +827,7 @@ type AwsRdsDBInstance struct {
 	PreCreate func(input *rds.CreateDBInstanceInput) error `json:"-"`
 
 	// Optional to provide method to be excecuted after database has been created.
-	AfterCreate func(res *rds.DBInstance, info *DBConnInfo) error `json:"-"`
+	AfterCreate func(res *rds.DBInstance, info *DBConnInfo, db *sqlx.DB) error `json:"-"`
 
 	// contains filtered or unexported fields
 	result *rds.DBInstance

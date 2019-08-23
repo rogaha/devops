@@ -221,7 +221,7 @@ func EcsReadTaskDefinition(serviceDir, targetEnv string) ([]byte, error) {
 
 	dat, err := ioutil.ReadFile(defFile)
 	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to read file %s", defFile)
+		return nil, errors.Wrapf(err, "failed to read file %s", defFile)
 	}
 
 	return dat, nil
@@ -249,7 +249,7 @@ func LambdaReadFuncDefinition(serviceDir, targetEnv string) ([]byte, error) {
 
 	dat, err := ioutil.ReadFile(defFile)
 	if err != nil {
-		return nil, errors.WithMessagef(err, "failed to read file %s", defFile)
+		return nil, errors.Wrapf(err, "failed to read file %s", defFile)
 	}
 
 	return dat, nil
@@ -268,7 +268,7 @@ func ParseTaskDefinitionInput(dat []byte) (*ecs.RegisterTaskDefinitionInput, err
 
 	var taskDef *ecs.RegisterTaskDefinitionInput
 	if err := json.Unmarshal(dat, &taskDef); err != nil {
-		return nil, errors.WithMessagef(err, "failed to json decode task definition - %s", string(dat))
+		return nil, errors.Wrapf(err, "failed to json decode task definition - %s", string(dat))
 	}
 
 	return taskDef, nil

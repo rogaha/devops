@@ -34,14 +34,14 @@ func migrationList(ctx context.Context, db *sqlx.DB, log *log.Logger, isUnittest
 					  CONSTRAINT email UNIQUE  (email)
 					) ;`
 				if _, err := tx.Exec(q1); err != nil {
-					return errors.WithMessagef(err, "Query failed %s", q1)
+					return errors.Wrapf(err, "Query failed %s", q1)
 				}
 				return nil
 			},
 			Rollback: func(tx *sql.Tx) error {
 				q1 := `DROP TABLE IF EXISTS users`
 				if _, err := tx.Exec(q1); err != nil {
-					return errors.WithMessagef(err, "Query failed %s", q1)
+					return errors.Wrapf(err, "Query failed %s", q1)
 				}
 				return nil
 			},

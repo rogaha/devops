@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -20,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
+	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 	"gopkg.in/go-playground/validator.v9"
@@ -695,7 +697,13 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 
 		// Execute the post AwsRdsDBCluster method if defined.
 		if created && cfg.AwsRdsDBCluster.AfterCreate != nil {
-			err = cfg.AwsRdsDBCluster.AfterCreate(dbCluster, cfg.DBConnInfo)
+			db, err := openDbConn(log, cfg.DBConnInfo)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			err = cfg.AwsRdsDBCluster.AfterCreate(dbCluster, cfg.DBConnInfo, db)
 			if err != nil {
 				return err
 			}
@@ -878,7 +886,13 @@ func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
 
 		// Execute the post created method if defined.
 		if created && cfg.AwsRdsDBInstance.AfterCreate != nil {
-			err = cfg.AwsRdsDBInstance.AfterCreate(dbInstance, cfg.DBConnInfo)
+			db, err := openDbConn(log, cfg.DBConnInfo)
+			if err != nil {
+				return err
+			}
+			defer db.Close()
+
+			err = cfg.AwsRdsDBInstance.AfterCreate(dbInstance, cfg.DBConnInfo, db)
 			if err != nil {
 				return err
 			}
@@ -1282,7 +1296,7 @@ func findProjectGoModFile(workDir string) (string, error) {
 		var err error
 		workDir, err = os.Getwd()
 		if err != nil {
-			return "", errors.WithMessage(err, "failed to get current working directory")
+			return "", errors.Wrap(err, "failed to get current working directory")
 		}
 	}
 
@@ -1304,7 +1318,7 @@ func findProjectGoModFile(workDir string) (string, error) {
 	// Verify the go.mod file was found.
 	ok, err := exists(goModFile)
 	if err != nil {
-		return "", errors.WithMessagef(err, "failed to load go.mod for project using project root %s", workDir)
+		return "", errors.Wrapf(err, "failed to load go.mod for project using project root %s", workDir)
 	} else if !ok {
 		return "", errors.Errorf("failed to locate project go.mod in project root %s", workDir)
 	}
@@ -1316,14 +1330,14 @@ func findProjectGoModFile(workDir string) (string, error) {
 func LoadGoModName(goModFile string) (string, error) {
 	ok, err := exists(goModFile)
 	if err != nil {
-		return "", errors.WithMessage(err, "Failed to load go.mod for project")
+		return "", errors.Wrap(err, "Failed to load go.mod for project")
 	} else if !ok {
 		return "", errors.Errorf("Failed to locate project go.mod at %s", goModFile)
 	}
 
 	b, err := ioutil.ReadFile(goModFile)
 	if err != nil {
-		return "", errors.WithMessagef(err, "Failed to read go.mod at %s", goModFile)
+		return "", errors.Wrapf(err, "Failed to read go.mod at %s", goModFile)
 	}
 
 	var name string
@@ -1381,4 +1395,44 @@ func GetTargetEnv(targetEnv, envName string) string {
 	}
 
 	return os.Getenv(envName)
+}
+
+// openDbConn opens a db connection to a database waiting for the host to come online to help handle errors such as:
+// 	no such host
+func openDbConn(log *log.Logger, dbInfo *DBConnInfo) (*sqlx.DB, error) {
+
+	st := time.Now().Unix()
+
+	var (
+		dbConn *sqlx.DB
+		err error
+	)
+	retryFunc := func() (bool, error) {
+		dbConn, err = sqlx.Open(dbInfo.Driver, dbInfo.URL())
+		if err != nil {
+			// Wait no longer than 50 minutes trying to connect to the database.
+			if time.Now().Unix() - st > 300 {
+				 return true, errors.Wrap(err, "Failed to connect to db.")
+			}
+
+			log.Println("openDbConn - %s", err )
+			return false, nil
+		}
+
+		_, err = dbConn.Exec("SELECT 1")
+		if err != nil {
+			// Wait no longer than 50 minutes trying to connect to the database.
+			if time.Now().Unix() - st > 300 {
+				return true, errors.Wrap(err, "Failed to connect to db.")
+			}
+
+			log.Println("openDbConn - %s", err )
+			return false, nil
+		}
+
+		return true, nil
+	}
+	err = retry.Retry(context.Background(), nil, retryFunc)
+
+	return dbConn, err
 }

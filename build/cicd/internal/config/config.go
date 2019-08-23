@@ -98,7 +98,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 	// Get the current working directory. This should be somewhere contained within the project.
 	workDir, err := os.Getwd()
 	if err != nil {
-		return cfg, errors.WithMessage(err, "Failed to get current working directory.")
+		return cfg, errors.Wrap(err, "Failed to get current working directory.")
 	}
 
 	// Set the project root directory and project name. This is current set by finding the go.mod file for the project
@@ -400,13 +400,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 
 				return nil
 			},
-			AfterCreate: func(res *rds.DBCluster, dbInfo *devdeploy.DBConnInfo) error {
-				masterDb, err := sqlx.Open(dbInfo.Driver, dbInfo.URL())
-				if err != nil {
-					return errors.WithMessage(err, "Failed to connect to db for schema migration.")
-				}
-				defer masterDb.Close()
-
+			AfterCreate: func(res *rds.DBCluster, dbInfo *devdeploy.DBConnInfo, masterDb *sqlx.DB) error {
 				return schema.Migrate(context.Background(), masterDb, log, false)
 			},
 		}
@@ -428,13 +422,7 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 				{Key: devdeploy.AwsTagNameProject, Value: cfg.ProjectName},
 				{Key: devdeploy.AwsTagNameEnv, Value: cfg.Env},
 			},
-			AfterCreate: func(res *rds.DBInstance, dbInfo *devdeploy.DBConnInfo) error {
-				masterDb, err := sqlx.Open(dbInfo.Driver, dbInfo.URL())
-				if err != nil {
-					return errors.WithMessage(err, "Failed to connect to db for schema migration.")
-				}
-				defer masterDb.Close()
-
+			AfterCreate: func(res *rds.DBInstance, dbInfo *devdeploy.DBConnInfo, masterDb *sqlx.DB) error {
 				return schema.Migrate(context.Background(), masterDb, log, false)
 			},
 		}

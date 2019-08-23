@@ -294,7 +294,7 @@ func execCmds(log *log.Logger, workDir string, cmds ...[]string) error {
 		err := cmd.Run()
 
 		if err != nil {
-			return errors.WithMessagef(err, "failed to execute %s", strings.Join(cmdVals, " "))
+			return errors.Wrapf(err, "failed to execute %s", strings.Join(cmdVals, " "))
 		}
 	}
 
