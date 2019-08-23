@@ -32,12 +32,12 @@ populate it with "dev" as the default value.
 
 ### Building 
 
-This service uses a multi-stage [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile).
+This service uses a multi-stage [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/go-web-api/Dockerfile).
 Since most projects will have additional packages that are contained in a parent directory from the service itself, the 
 service must be built from the project root directory and reference the Dockerfile for the target service.  
 
 ```bash
-docker build -f examples/aws-ecs-go-web-api/Dockerfile .
+docker build -f examples/go-web-api/Dockerfile .
 ```
 
 ### Hot reloads 

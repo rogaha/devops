@@ -56,14 +56,14 @@ configuration for AWS resources and handles executing that configuration for you
 2. [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) - An example implementation of the 
 _devdeploy_ package that includes configuration for two example applications: 
 
-    * [Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) - An API service 
+    * [Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/go-web-api) - An API service 
     written in GO that is deployed to [AWS Fargate](https://aws.amazon.com/fargate/) with built in support for HTTPS.
     
         AWS Fargate is a compute engine for Amazon ECS that allows you to run containers without having to manage servers or 
         clusters. With AWS Fargate, you no longer have to provision, configure, and scale clusters of virtual machines to 
         run containers.  
 
-    * [Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs) - 
+    * [Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector) - 
     An python script that is deployed to [AWS Lambda](https://aws.amazon.com/lambda/) to ship logs from AWS to Datadog. 
     
         AWS Lambda lets you run code without provisioning or managing servers. You pay only for the compute time you consume, 
@@ -139,12 +139,12 @@ details for AWS VPC, security group, RDS postgres database, Redis cache cluster,
  
 * `function.go` - Defines your functions that will be deployed to AWS Lambda. This includes settings for the runtime, 
 amount of memory, and timeout. The code has one function defined, 
-[Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs). 
+[Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector). 
 Additional functions can easily be defined here.  
 
 * `service.go` - Defines your services that will be deployed to AWS Fargate. This includes settings for your AWS ECS 
 Cluster, the specific service and task definitions. The code as one service defined, 
-[Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api). Additional 
+[Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/go-web-api). Additional 
 services can easily be defined here.  
 
 * `schema.go` - Handles execution of schema migrations for target the deployment environment. Database credentials are 

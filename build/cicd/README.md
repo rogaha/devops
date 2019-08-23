@@ -76,10 +76,10 @@ Secrets and other credentials are stored in [AWS Secrets Manager](https://aws.am
 
 ### Services 
 Services are generally applications that will need to be long running or continuously available. An example 
-[web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) deployed as service 
+[web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/go-web-api) deployed as service 
 is provided by the devops project in [examples](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
 
-The [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile) for 
+The [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/go-web-api/Dockerfile) for 
 the example service is defined as [multi-stage build](https://docs.docker.com/develop/develop-images/multistage-build/) 
 that includes building a base layer, running unittests and compiling the go application as static binary. The final 
 layer in the multi-stage uses [alpine:3.9](https://hub.docker.com/_/alpine?tab=description) as its base image and copies 
@@ -116,12 +116,12 @@ image is tagged with the go.mod hash and pushed to the projects
 ### Functions 
 
 Functions are applications that can be executed in short period of time. An python script for 
-[Datadog Log Collection](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs) 
+[Datadog Log Collection](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector) 
 deployed as a function is provided by the devops project in 
 [examples]((https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
 
 A function is built using the defined 
-[Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-lambda-python-ddlogs/Dockerfile).
+[Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/datadog-lambda-logcollector/Dockerfile).
 
  The `Dockerfile` should use a [lambdaci image](https://hub.docker.com/r/lambci/lambda/) as the base image. 
   
@@ -203,12 +203,12 @@ created from step 1 `saas-starter-kit-deploy`
 
 4. Try running the build for a single service. 
 ```bash
-cicd --env=dev build service --name=aws-ecs-go-web-api --release-tag=testv1
+cicd --env=dev build service --name=go-web-api --release-tag=testv1
 ```
 
 4. Try running the deploy for a single service. 
 ```bash
-cicd --env=dev deploy service --name=aws-ecs-go-web-api --release-tag=testv1
+cicd --env=dev deploy service --name=go-web-api --release-tag=testv1
 ```
 
 
@@ -288,7 +288,7 @@ Access/Secret Keys are required
     
     Options: 
     ```bash
-    --name value, -n value            target service, one of [aws-ecs-go-web-api]
+    --name value, -n value            target service, one of [go-web-api]
     --release-tag value, --tag value  optional tag to override default CI_COMMIT_SHORT_SHA
     --dry-run                         print out the deploy details
     ``` 
@@ -325,14 +325,14 @@ Access/Secret Keys are required
 
 ### Examples
 
-Build the example service _aws-ecs-go-web-api_ 
+Build the example service _go-web-api_ 
 ```bash
-$ cicid --env=dev build service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
+$ cicid --env=dev build service --name=go-web-api --release-tag=testv1 --dry-run=false
 ```
 
-Deploy the example service _aws-ecs-go-web-api_ 
+Deploy the example service _go-web-api_ 
 ```bash
-$ cicid --env=dev deploy service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
+$ cicid --env=dev deploy service --name=go-web-api --release-tag=testv1 --dry-run=false
 ```
 
 

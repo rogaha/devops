@@ -14,14 +14,14 @@ import (
 type Function = string
 
 var (
-	Function_AwsLambdaGoFunc      = "aws-lambda-go-func"
-	FunctionAwsLambdaPythonDdlogs = "aws-lambda-python-ddlogs"
+	FunctionGoWebApi      = "go-web-api"
+	FunctionDatadogLogcollector= "datadog-logcollector"
 )
 
 // List of function names used by main.go for help.
 var FunctionNames = []Function{
-	Function_AwsLambdaGoFunc,
-	FunctionAwsLambdaPythonDdlogs,
+	FunctionGoWebApi,
+	FunctionDatadogLogcollector,
 }
 
 // FunctionContext defines the flags for deploying a function.
@@ -56,11 +56,27 @@ func NewFunctionContext(funcName string, cfg *devdeploy.Config) (*FunctionContex
 	}
 
 	switch funcName {
-	case Function_AwsLambdaGoFunc:
-		// No additional settings for function.
-	case FunctionAwsLambdaPythonDdlogs:
+	case FunctionGoWebApi:
+
+
+		// AwsLambdaFunction defines the details needed to create an lambda function.
+		ctx.AwsLambdaFunction = &devdeploy.AwsLambdaFunction{
+			FunctionName: ctx.Name,
+			Description:  "GO Web API with API Gateway",
+
+			Handler:    "lambda_function.lambda_handler",
+			Runtime:    "python2.7",
+			MemorySize: 128,
+			Timeout: aws.Int64(30),
+			Environment: map[string]string{},
+			Tags: []devdeploy.Tag{
+				{Key: devdeploy.AwsTagNameProject, Value: cfg.ProjectName},
+				{Key: devdeploy.AwsTagNameEnv, Value: cfg.Env},
+			},
+		}
+	case FunctionDatadogLogcollector:
 		// Change the build directory to the function directory instead of project root.
-		ctx.BuildDir = ctx.FunctionDir
+		ctx.BuildDir = filepath.Join(cfg.ProjectRoot, "examples/datadog-lambda-logcollector")
 
 		// AwsLambdaFunction defines the details needed to create an lambda function.
 		ctx.AwsLambdaFunction = &devdeploy.AwsLambdaFunction{

@@ -19,12 +19,12 @@ import (
 type Service = string
 
 var (
-	ServiceAwsEcsGoWebApi = "aws-ecs-go-web-api"
+	ServiceGoWebApi = "go-web-api"
 )
 
 // List of service names used by main.go for help.
 var ServiceNames = []Service{
-	ServiceAwsEcsGoWebApi,
+	ServiceGoWebApi,
 }
 
 // ServiceContext defines the flags for deploying a service.
@@ -109,7 +109,7 @@ func NewServiceContext(serviceName string, cfg *devdeploy.Config) (*ServiceConte
 	// =========================================================================
 	// Service dependant settings.
 	switch serviceName {
-	case ServiceAwsEcsGoWebApi:
+	case ServiceGoWebApi:
 		if cfg.Env == EnvProd {
 			ctx.ServiceHostPrimary = "devops.example.saasstartupkit.com"
 
