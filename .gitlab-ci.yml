@@ -128,9 +128,9 @@ aws-lambda-python-ddlogs:deploy:prod:
 tag:release:prod:
   stage: release:prod
   script:
-    - 'docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY'
-    - 'git tag $(cicd --env=prod semver inc-patch -version=$(git tag | tail -n 1))'
-    - 'git push --tags'
+    - git remote set-url --push origin $(echo $CI_BUILD_REPO | perl -pe 's#.*@(.+?(\:\d+)?)/#git@\1:#')
+    - git tag $(cicd --env=prod semver inc-patch -version=$(git tag | tail -n 1))
+    - git push --tags
   tags:
     - master
   only:
