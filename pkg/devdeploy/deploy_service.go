@@ -940,13 +940,13 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			ecsCluster = descRes.Clusters[0]
 		}
 
-		if ecsCluster == nil || *ecsCluster.Status == "inactive" {
+		if ecsCluster == nil || *ecsCluster.Status == "INACTIVE" {
 			input, err := targetService.AwsEcsCluster.Input()
 			if err != nil {
 				return err
 			}
 
-			// If no repository was found, create one.
+			// If no cluster was found, create one.
 			createRes, err := svc.CreateCluster(input)
 			if err != nil {
 				return errors.Wrapf(err, "Failed to create cluster '%s'", clusterName)
