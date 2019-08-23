@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -578,3 +579,39 @@ func getCommitRef() string {
 
 	return commitRef
 }
+
+// DeployInfrastructureForTargetEnv executes the deploy commands for a target function.
+func DeployInfrastructureForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCredentials, targetEnv Env, dryRun bool) error {
+
+	cfgCtx, err := NewConfigContext(targetEnv, awsCredentials)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := cfgCtx.Config(log)
+	if err != nil {
+		return err
+	}
+
+	if dryRun {
+		cfgJSON, err := json.MarshalIndent(cfg, "", "    ")
+		if err != nil {
+			log.Fatalf("DeployFunctionForTargetEnv : Marshalling config to JSON : %+v", err)
+		}
+		log.Printf("DeployFunctionForTargetEnv : config : %v\n", string(cfgJSON))
+
+
+		return nil
+	}
+
+	err = devdeploy.SetupDeploymentEnv(log, cfg)
+	if err != nil {
+		return err
+	}
+
+
+
+
+	return nil
+}
+

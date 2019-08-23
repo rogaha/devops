@@ -28,6 +28,11 @@ import (
 	"gopkg.in/go-playground/validator.v9"
 )
 
+
+type Infrastructure struct {
+
+}
+
 // SetupDeploymentEnv ensures all the resources for the project are setup before deploying a single ECS service or
 // Lambda function. This will ensure the following AWS are available for deployment:
 // 1. AWS IAM Policy
@@ -37,14 +42,14 @@ import (
 // 5. AWS Elastic Cache Cluster
 // 6. AWS RDS database Cluster
 // 7. AWS RDS database Instance
-func SetupDeploymentEnv(log *log.Logger, cfg *Config) error {
+func SetupInfrastructure(log *log.Logger, cfg *Config) (*Infrastructure, error) {
 
 	log.Printf("Setup deployment environment %s\n", cfg.Env)
 
 	log.Println("\tValidate request.")
 	errs := validator.New().Struct(cfg)
 	if errs != nil {
-		return errs
+		return nil, errs
 	}
 
 	// Step 1: Find or create the AWS IAM policy.
