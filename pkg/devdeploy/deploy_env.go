@@ -1352,8 +1352,6 @@ func SetupS3Buckets(log *log.Logger, cfg *Config, s3Buckets ...*AwsS3Bucket) err
 		}
 	}
 
-	os.Exit(1)
-
 	return nil
 }
 
