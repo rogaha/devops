@@ -234,7 +234,7 @@ perform the project specific deployment commands.
     ```
     Trusted Entity: AWS Service
     Service that will use this role: EC2 
-    Attach permissions policies:  AmazonEC2FullAccess, AmazonS3FullAccess 
+    Attach permissions policies:  AmazonEC2FullAccess, AmazonS3FullAccess, saas-starter-kit-deploy 
     Role Name: SaasStarterKitEc2RoleForGitLabRunner
     Role Description: Allows GitLab runners hosted on EC2 instances to call AWS services on your behalf.
     ``` 
