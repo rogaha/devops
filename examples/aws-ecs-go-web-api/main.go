@@ -211,17 +211,20 @@ func main() {
 	defer masterDb.Close()
 
 	// =========================================================================
-	// Start Redis
-	log.Println("main : Started : Initialize Redis")
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:        cfg.Redis.Host,
-		DB:          cfg.Redis.DB,
-		DialTimeout: cfg.Redis.DialTimeout,
-	})
-	defer redisClient.Close()
+	// Start Redis if enabled
+	var redisClient *redis.Client
+	if cfg.Redis.Host != "-" {
+		log.Println("main : Started : Initialize Redis")
+		redisClient = redis.NewClient(&redis.Options{
+			Addr:        cfg.Redis.Host,
+			DB:          cfg.Redis.DB,
+			DialTimeout: cfg.Redis.DialTimeout,
+		})
+		defer redisClient.Close()
 
-	if err := redisClient.Ping().Err(); err != nil {
-		log.Fatalf("main : Ping Redis : %+v", err)
+		if err := redisClient.Ping().Err(); err != nil {
+			log.Fatalf("main : Ping Redis : %+v", err)
+		}
 	}
 
 	// =========================================================================
@@ -270,10 +273,12 @@ func main() {
 			fmt.Fprintf(w, "Database connection: ok\n<br/>")
 		}
 
-		if err := testRedisConn(redisClient); err != nil {
-			fmt.Fprintf(w, "Redis connection: %s\n<br/>", err)
-		} else {
-			fmt.Fprintf(w, "Redis connection: ok\n<br/>")
+		if redisClient != nil {
+			if err := testRedisConn(redisClient); err != nil {
+				fmt.Fprintf(w, "Redis connection: %s\n<br/>", err)
+			} else {
+				fmt.Fprintf(w, "Redis connection: ok\n<br/>")
+			}
 		}
 
 		fmt.Fprintf(w, "CI_COMMIT_REF_NAME: %s\n<br/>", os.Getenv("CI_COMMIT_REF_NAME"))

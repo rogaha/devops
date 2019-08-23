@@ -1011,7 +1011,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 				"{STATIC_FILES_CLOUDFRONT_ENABLED}": "false",
 				"{STATIC_FILES_IMG_RESIZE_ENABLED}": "false",
 
-				"{CACHE_HOST}": "", // Not enabled by default
+				"{CACHE_HOST}": "-", // Not enabled by default
 
 				"{DB_HOST}":        "",
 				"{DB_USER}":        "",

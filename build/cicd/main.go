@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Masterminds/semver"
 	"github.com/urfave/cli"
 	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/config"
 	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
@@ -237,6 +238,35 @@ func main() {
 						isUnittest := c.Bool("unittest")
 
 						return config.RunSchemaMigrationsForTargetEnv(log, awsCredentials, targetEnv, isUnittest)
+					},
+				},
+			},
+		},
+
+		// semver provides the ability to work with Semantic Versions.
+		{
+			Name:  "semver",
+			Usage: "provides the ability to work with Semantic Versions",
+			Subcommands: []cli.Command{
+				{
+					Name:  "inc-patch",
+					Usage: "produces the next patch version",
+					Flags: []cli.Flag{
+						cli.StringFlag{
+							Name:     "version",
+							Required: true,
+						},
+					},
+					Action: func(c *cli.Context) error {
+						v, err := semver.NewVersion(c.String("version"))
+						if err != nil {
+							return err
+						}
+
+						res := v.IncPatch()
+						fmt.Println(res.Original())
+
+						return nil
 					},
 				},
 			},

@@ -31,6 +31,9 @@ const (
 	// EnableRdsServerless will use the Aurora database engine that scales the capacity based on database load. This is
 	// a good option for intermittent or unpredictable workloads.
 	EnableRdsServerless = true
+
+	// EnableElasticCache will include a Redis Elastic Cluster
+	EnableElasticCache = false
 )
 
 // Env defines the target deployment environment.
@@ -322,22 +325,24 @@ func (cfgCtx *ConfigContext) Config(log *log.Logger) (*devdeploy.Config, error) 
 	}()
 
 	// Define the Redis Cache cluster used for ephemeral storage.
-	cfg.AwsElasticCacheCluster = &devdeploy.AwsElasticCacheCluster{
-		CacheClusterId:          cfg.ProjectName + "-" + cfg.Env,
-		CacheNodeType:           "cache.t2.micro",
-		CacheSubnetGroupName:    "default",
-		Engine:                  "redis",
-		EngineVersion:           "5.0.4",
-		NumCacheNodes:           1,
-		Port:                    6379,
-		AutoMinorVersionUpgrade: aws.Bool(true),
-		SnapshotRetentionLimit:  aws.Int64(7),
-		ParameterNameValues: []devdeploy.AwsElasticCacheParameter{
-			devdeploy.AwsElasticCacheParameter{
-				ParameterName:  "maxmemory-policy",
-				ParameterValue: "allkeys-lru",
+	if EnableElasticCache {
+		cfg.AwsElasticCacheCluster = &devdeploy.AwsElasticCacheCluster{
+			CacheClusterId:          cfg.ProjectName + "-" + cfg.Env,
+			CacheNodeType:           "cache.t2.micro",
+			CacheSubnetGroupName:    "default",
+			Engine:                  "redis",
+			EngineVersion:           "5.0.4",
+			NumCacheNodes:           1,
+			Port:                    6379,
+			AutoMinorVersionUpgrade: aws.Bool(true),
+			SnapshotRetentionLimit:  aws.Int64(7),
+			ParameterNameValues: []devdeploy.AwsElasticCacheParameter{
+				devdeploy.AwsElasticCacheParameter{
+					ParameterName:  "maxmemory-policy",
+					ParameterValue: "allkeys-lru",
+				},
 			},
-		},
+		}
 	}
 
 	// If serverless RDS is enabled, defined the RDS database cluster and link it to the database instance.

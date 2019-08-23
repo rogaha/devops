@@ -128,8 +128,8 @@ aws-lambda-python-ddlogs:deploy:prod:
 tag:release:prod:
   stage: release:prod
   script:
-    - 'go install ./cmd/devops'
-    - 'git tag $(devops semver inc-patch -version=$(git tag | tail -n 1))'
+    - 'docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY'
+    - 'git tag $(cicd --env=prod semver inc-patch -version=$(git tag | tail -n 1))'
     - 'git push --tags'
   tags:
     - master

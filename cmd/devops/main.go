@@ -1,14 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/Masterminds/semver"
 	"github.com/gobuffalo/packr/v2"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -64,35 +62,6 @@ func main() {
 				},
 			},
 		},
-		// semver provides the ability to work with Semantic Versions.
-		{
-			Name:    "semver",
-			Usage:   "provides the ability to work with Semantic Versions",
-			Subcommands: []cli.Command{
-				{
-					Name:  "inc-patch",
-					Usage: "produces the next patch version",
-					Flags: []cli.Flag{
-						cli.StringFlag{
-							Name:     "version",
-							Required: true,
-						},
-					},
-					Action: func(c *cli.Context) error {
-						v, err := semver.NewVersion(c.String("version"))
-						if err != nil {
-							return err
-						}
-
-						res := v.IncPatch()
-						fmt.Println(res.Original())
-
-						return nil
-					},
-				},
-			},
-		},
-
 	}
 
 	err := app.Run(os.Args)
