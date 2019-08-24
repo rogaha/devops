@@ -256,7 +256,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 					// stamp.
 					//
 					// CallerReference is a required field
-					CallerReference: aws.String("devops-deploy" + zoneName),
+					CallerReference: aws.String(fmt.Sprintf("devops-deploy-%s-%d", zoneName, time.Now().Unix())),
 				})
 				if err != nil {
 					return errors.Wrapf(err, "Failed to create route 53 hosted zone '%s' for domain '%s'", zoneName, dn)
