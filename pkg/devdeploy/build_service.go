@@ -40,19 +40,24 @@ func BuildServiceForTargetEnv(log *log.Logger, cfg *Config, targetService *Build
 		return errs
 	}
 
-	err := SetupBuildEnv(log, cfg)
+	infra, err := NewInfrastructure(cfg)
 	if err != nil {
 		return err
 	}
 
-	releaseImage := *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
+	repo, err := infra.GetAwsEcrRepository(cfg.AwsEcrRepository.RepositoryName)
+	if err != nil {
+		return err
+	}
+
+	releaseImage := repo.RepositoryUri + ":" + targetService.ReleaseTag
 	log.Printf("\tRelease image: %s", releaseImage)
 
 	var ecrDockerLoginCmd []string
 	{
 		log.Println("\tRetrieve ECR authorization token used for docker login.")
 
-		svc := ecr.New(cfg.AwsSession())
+		svc := ecr.New(infra.AwsSession())
 
 		// Get the credentials necessary for logging into the AWS Elastic Container Registry
 		// made available with the AWS access key and AWS secret access keys.

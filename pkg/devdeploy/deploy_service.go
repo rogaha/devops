@@ -2,7 +2,6 @@ package devdeploy
 
 import (
 	"compress/gzip"
-	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
@@ -25,60 +24,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/servicediscovery"
-	"github.com/bobesa/go-domain-util/domainutil"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
-	"gopkg.in/go-playground/validator.v9"
 )
 
-// DeployService defines the detailed needed to deploy a service to AWS ECS as a Fargate task.
-type DeployService struct {
-	//DeploymentEnv *DeploymentEnv `validate:"required,dive,required"`
-
-	ServiceName string `validate:"required" example:"web-api"`
-
-	EnableHTTPS        bool     `validate:"omitempty"`
-	ServiceHostPrimary string   `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
-	ServiceHostNames   []string `validate:"omitempty,dive,fqdn"`
-
-	Dockerfile string `validate:"required" example:"./cmd/web-api/Dockerfile"`
-
-	ReleaseTag string `validate:"required"`
-
-	StaticFilesDir      string `validate:"omitempty" example:"./cmd/web-api"`
-	StaticFilesS3Prefix string `validate:"omitempty"`
-
-	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
-	AwsEcsCluster *AwsEcsCluster `validate:"required"`
-
-	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
-	AwsEcsService *AwsEcsService `validate:"required"`
-
-	// AwsEcsTaskDefinition defines the task definition.
-	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
-
-	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
-	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
-	AwsEcsExecutionRole *AwsIamRole `validate:"required"`
-
-	// AwsEcsExecutionRole defines the name of the iam task role for ecs task and the detailed needed to create doesn't exist.
-	// This role is used by the task itself for calling other AWS services.
-	AwsEcsTaskRole *AwsIamRole `validate:"required"`
-
-	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS
-	// task.
-	AwsCloudWatchLogGroup *AwsCloudWatchLogGroup `validate:"required"`
-
-	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
-	AwsElbLoadBalancer *AwsElbLoadBalancer `validate:"omitempty"`
-
-	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
-	// it does not exist.
-	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
-
-	ReleaseImage string `validate:"omitempty"`
-}
 
 // DeployServiceToTargetEnv deploys a service to AWS ECS. The following steps will be executed for deployment:
 // 1. AWS ECR repository
@@ -92,80 +40,55 @@ type DeployService struct {
 // 9. Create or update the AWS ECS service.
 // 10. Sync static files to AWS S3.
 // 11. Wait for AWS ECS service to enter a stable state.
-func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *DeployService) error {
+func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *ProjectService) error {
 
-	err := SetupDeploymentEnv(log, cfg)
+	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, cfg.Env)
+
+	infra, err := NewInfrastructure(cfg)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, cfg.Env)
-
-	r, err := regexp.Compile(`^(\d+)`)
-	if err != nil {
-		return errors.WithStack(err)
-	}
-
-	// Workaround for domains that start with a numeric value like 8north.com
-	// Validation fails with error: failed on the 'fqdn' tag
-	origServiceHostPrimary := targetService.ServiceHostPrimary
-	matches := r.FindAllString(targetService.ServiceHostPrimary, -1)
-	if len(matches) > 0 {
-		for _, m := range matches {
-			targetService.ServiceHostPrimary = strings.Replace(targetService.ServiceHostPrimary, m, "X", -1)
-		}
-	}
-
-	log.Println("\tValidate request.")
-	errs := validator.New().Struct(targetService)
-	if errs != nil {
-		return errs
-	}
-
-	targetService.ServiceHostPrimary = origServiceHostPrimary
-
 	startTime := time.Now()
 
-	vpcId := cfg.AwsEc2Vpc.VpcId
-	subnetIds := cfg.AwsEc2Vpc.subnetIds
-	securityGroupIds := []string{*cfg.AwsEc2SecurityGroup.result.GroupId}
+	// Find the vpc.
+	var vpc *AwsEc2VpcResult
+	if cfg.AwsEc2Vpc.IsDefault {
+		vpc, err = infra.GetAwsEc2DefaultVpc()
+	} else if cfg.AwsEc2Vpc.VpcId != "" {
+		vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.VpcId)
+	} else {
+		vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.CidrBlock)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Load the EC2 security group.
+	sg, err := infra.GetAwsEc2SecurityGroup(cfg.AwsEc2SecurityGroup.GroupName)
+	if err != nil {
+		return err
+	}
+	securityGroupIds := []string{sg.GroupId}
 
 	// Step 1: Find the AWS ECR repository.
 	{
 		log.Println("\tECR - Get repository")
 
-		repository, err := setupAwsEcrRepository(log, cfg, cfg.AwsEcrRepository)
+		repo, err := infra.GetAwsEcrRepository(cfg.AwsEcrRepository.RepositoryName)
 		if err != nil {
 			return err
 		}
-		cfg.AwsEcrRepository.result = repository
+		targetService.ReleaseImage = repo.RepositoryUri + ":" + targetService.ReleaseTag
 
-		targetService.ReleaseImage = *cfg.AwsEcrRepository.result.RepositoryUri + ":" + targetService.ReleaseTag
-
-		log.Printf("\t%s\tECR Respository available\n", Success)
+		log.Printf("\t%s\tRelease image set to %s\n", Success, targetService.ReleaseImage)
 	}
 
 	// Step 2: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
+
+	// Generate a slice with the primary domain name and include all the alternative domain names.
 	var zoneArecNames = map[string][]string{}
-	if targetService.ServiceHostPrimary != "" {
-		log.Println("\tRoute 53 - Get or create hosted zones.")
-
-		svc := route53.New(cfg.AwsSession())
-
-		log.Println("\t\tList all hosted zones.")
-		var zones []*route53.HostedZone
-		err := svc.ListHostedZonesPages(&route53.ListHostedZonesInput{},
-			func(res *route53.ListHostedZonesOutput, lastPage bool) bool {
-				for _, z := range res.HostedZones {
-					zones = append(zones, z)
-				}
-				return !lastPage
-			})
-		if err != nil {
-			return errors.Wrap(err, "Failed list route 53 hosted zones")
-		}
-
-		// Generate a slice with the primary domain name and include all the alternative domain names.
+	{
 		lookupDomains := []string{}
 		if targetService.ServiceHostPrimary != "" {
 			lookupDomains = append(lookupDomains, targetService.ServiceHostPrimary)
@@ -176,299 +99,41 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 			}
 		}
 
-		// Loop through all the defined domain names and find the associated zone even when they are a sub domain.
-		for _, dn := range lookupDomains {
-			log.Printf("\t\t\tFind zone for domain '%s'", dn)
-
-			// Get the top level domain from url.
-			zoneName := domainutil.Domain(dn)
-			var subdomain string
-			if zoneName == "" {
-				// Handle domain names that have weird TDL: ie .tech
-				zoneName = dn
-				log.Printf("\t\t\t\tNon-standard Level Domain: '%s'", zoneName)
-			} else {
-				log.Printf("\t\t\t\tTop Level Domain: '%s'", zoneName)
-
-				// Check if url has subdomain.
-				if domainutil.HasSubdomain(dn) {
-					subdomain = domainutil.Subdomain(dn)
-					log.Printf("\t\t\t\tsubdomain: '%s'", subdomain)
-				}
-			}
-
-			// Start at the top level domain and try to find a hosted zone. Search until a match is found or there are
-			// no more domain levels to search for.
-			var zoneId string
-			for {
-				log.Printf("\t\t\t\tChecking zone '%s' for associated hosted zone.", zoneName)
-
-				// Loop over each one of hosted zones and try to find match.
-				for _, z := range zones {
-					zn := strings.TrimRight(*z.Name, ".")
-
-					log.Printf("\t\t\t\t\tChecking if '%s' matches '%s'", zn, zoneName)
-					if zn == zoneName {
-						zoneId = *z.Id
-						break
-					}
-				}
-
-				if zoneId != "" || zoneName == dn {
-					// Found a matching zone or have to search all possibilities!
-					break
-				}
-
-				// If we have not found a hosted zone, append the next level from the domain to the zone.
-				pts := strings.Split(subdomain, ".")
-				subs := []string{}
-				for idx, sn := range pts {
-					if idx == len(pts)-1 {
-						zoneName = sn + "." + zoneName
-					} else {
-						subs = append(subs, sn)
-					}
-				}
-				subdomain = strings.Join(subs, ".")
-			}
-
-			var aName string
-			if zoneId == "" {
-
-				// Get the top level domain from url again.
-				zoneName := domainutil.Domain(dn)
-				if zoneName == "" {
-					// Handle domain names that have weird TDL: ie .tech
-					zoneName = dn
-				}
-
-				log.Printf("\t\t\t\tNo hosted zone found for '%s', create '%s'.", dn, zoneName)
-				createRes, err := svc.CreateHostedZone(&route53.CreateHostedZoneInput{
-					Name: aws.String(zoneName),
-					HostedZoneConfig: &route53.HostedZoneConfig{
-						Comment: aws.String(fmt.Sprintf("Public hosted zone created by saas-starter-kit.")),
-					},
-
-					// A unique string that identifies the request and that allows failed CreateHostedZone
-					// requests to be retried without the risk of executing the operation twice.
-					// You must use a unique CallerReference string every time you submit a CreateHostedZone
-					// request. CallerReference can be any unique string, for example, a date/time
-					// stamp.
-					//
-					// CallerReference is a required field
-					CallerReference: aws.String("devops-deploy" + zoneName),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to create route 53 hosted zone '%s' for domain '%s'", zoneName, dn)
-				}
-				zoneId = *createRes.HostedZone.Id
-
-				log.Printf("\t\t\t\tCreated hosted zone '%s'", zoneId)
-
-				// The fully qualified A record name.
-				aName = dn
-			} else {
-				log.Printf("\t\t\t\tFound hosted zone '%s'", zoneId)
-
-				// The fully qualified A record name.
-				if subdomain != "" {
-					aName = subdomain + "." + zoneName
-				} else {
-					aName = zoneName
-				}
-			}
-
-			// Add the A record to be maintained for the zone.
-			if _, ok := zoneArecNames[zoneId]; !ok {
-				zoneArecNames[zoneId] = []string{}
-			}
-			zoneArecNames[zoneId] = append(zoneArecNames[zoneId], aName)
-
-			log.Printf("\t%s\tZone '%s' found with A record name '%s'.\n", Success, zoneId, aName)
-		}
-	}
-
-	// Step 3: Setup service discovery.
-	var sdService *AwsSdService
-	if targetService.AwsSdPrivateDnsNamespace != nil {
-		log.Println("\tService Discovery - Get or Create Namespace")
-
-		svc := servicediscovery.New(cfg.AwsSession())
-
-		namespaceName := targetService.AwsSdPrivateDnsNamespace.Name
-
-		log.Println("\t\tList all the private namespaces and try to find an existing entry.")
-
-		listNamespaces := func() (*servicediscovery.NamespaceSummary, error) {
-			var found *servicediscovery.NamespaceSummary
-			err := svc.ListNamespacesPages(&servicediscovery.ListNamespacesInput{
-				Filters: []*servicediscovery.NamespaceFilter{
-					&servicediscovery.NamespaceFilter{
-						Name:      aws.String("TYPE"),
-						Condition: aws.String("EQ"),
-						Values:    aws.StringSlice([]string{"DNS_PRIVATE"}),
-					},
-				},
-			}, func(res *servicediscovery.ListNamespacesOutput, lastPage bool) bool {
-				for _, n := range res.Namespaces {
-					if *n.Name == namespaceName {
-						found = n
-						return false
-					}
-				}
-				return !lastPage
-			})
-			if err != nil {
-				return nil, errors.Wrap(err, "Failed to list namespaces")
-			}
-
-			return found, nil
-		}
-
-		sdNamespace, err := listNamespaces()
+		zones, err := infra.setupRoute53Zones(log, cfg, lookupDomains)
 		if err != nil {
 			return err
 		}
 
-		if sdNamespace == nil {
-			input, err := targetService.AwsSdPrivateDnsNamespace.Input(vpcId)
-			if err != nil {
-				return err
-			}
-
-			log.Println("\t\tCreate private namespace.")
-
-			// If no namespace was found, create one.
-			createRes, err := svc.CreatePrivateDnsNamespace(input)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to create namespace '%s'", namespaceName)
-			}
-			operationId := createRes.OperationId
-
-			log.Println("\t\tWait for create operation to finish.")
-			retryFunc := func() (bool, error) {
-				opRes, err := svc.GetOperation(&servicediscovery.GetOperationInput{
-					OperationId: operationId,
-				})
-				if err != nil {
-					return true, err
-				}
-
-				log.Printf("\t\t\tStatus: %s.", *opRes.Operation.Status)
-
-				// The status of the operation. Values include the following:
-				//    * SUBMITTED: This is the initial state immediately after you submit a
-				//    request.
-				//    * PENDING: AWS Cloud Map is performing the operation.
-				//    * SUCCESS: The operation succeeded.
-				//    * FAIL: The operation failed. For the failure reason, see ErrorMessage.
-				if *opRes.Operation.Status == "SUCCESS" {
-					return true, nil
-				} else if *opRes.Operation.Status == "FAIL" {
-					err = errors.Errorf("Operation failed")
-					err = awserr.New(*opRes.Operation.ErrorCode, *opRes.Operation.ErrorMessage, err)
-					return true, err
-				}
-
-				return false, nil
-			}
-			err = retry.Retry(context.Background(), nil, retryFunc)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to get operation for namespace '%s'", namespaceName)
-			}
-
-			// Now that the create operation is complete, try to find the namespace again.
-			sdNamespace, err = listNamespaces()
-			if err != nil {
-				return err
-			}
-
-			log.Printf("\t\tCreated: %s.", *sdNamespace.Arn)
-		} else {
-			log.Printf("\t\tFound: %s.", *sdNamespace.Arn)
-
-			// The number of services that are associated with the namespace.
-			if sdNamespace.ServiceCount != nil {
-				log.Printf("\t\t\tServiceCount: %d.", *sdNamespace.ServiceCount)
-			}
+		for _, z := range zones {
+			zoneArecNames[z.ZoneId] = z.Entries
 		}
-		targetService.AwsSdPrivateDnsNamespace.result = sdNamespace
-		log.Printf("\t%s\tService Discovery Namespace setup\n", Success)
+	}
+
+	// Step 3: Setup service discovery.
+	var sdService *AwsSdServiceResult
+	if targetService.AwsSdPrivateDnsNamespace != nil {
+		log.Println("\tService Discovery - Get or Create Namespace")
+
+		sdNamespace, err := infra.setupSdPrivateDnsNamespace(log, cfg, targetService.AwsSdPrivateDnsNamespace, vpc.VpcId )
+		if err != nil {
+			return nil
+		}
 
 		// Ensure the service exists in the namespace.
 		if targetService.AwsSdPrivateDnsNamespace.Service != nil {
-			sdService = targetService.AwsSdPrivateDnsNamespace.Service
-
-			// Try to find an existing entry for the current service.
-			err = svc.ListServicesPages(&servicediscovery.ListServicesInput{
-				Filters: []*servicediscovery.ServiceFilter{
-					&servicediscovery.ServiceFilter{
-						Name:      aws.String("NAMESPACE_ID"),
-						Condition: aws.String("EQ"),
-						Values:    aws.StringSlice([]string{*sdNamespace.Id}),
-					},
-				},
-			}, func(res *servicediscovery.ListServicesOutput, lastPage bool) bool {
-				for _, n := range res.Services {
-					if *n.Name == sdService.Name {
-						sdService.resultArn = *n.Arn
-						return false
-					}
-				}
-				return !lastPage
-			})
+			sdService, err = infra.setupSdService(log, cfg,  targetService.AwsSdPrivateDnsNamespace.Service, sdNamespace.Name)
 			if err != nil {
-				return errors.Wrapf(err, "failed to list services for namespace '%s'", *sdNamespace.Id)
+				return nil
 			}
-
-			if sdService.resultArn == "" {
-				input, err := sdService.Input(*sdNamespace.Id)
-				if err != nil {
-					return err
-				}
-
-				// If no namespace was found, create one.
-				createRes, err := svc.CreateService(input)
-				if err != nil {
-					return errors.Wrapf(err, "failed to create service '%s'", sdService.Name)
-				}
-				sdService.resultArn = *createRes.Service.Arn
-
-				log.Printf("\t\tCreated: %s.", sdService.resultArn)
-			} else {
-				log.Printf("\t\tFound: %s.", sdService.resultArn)
-			}
-
-			log.Printf("\t%s\tService Discovery Service setup\n", Success)
 		}
 	}
 
 	// Step 4: Try to find the AWS Cloudwatch Log Group by name or create new one.
 	{
-		log.Println("\tCloudWatch Logs - Get or Create Log Group")
-
-		svc := cloudwatchlogs.New(cfg.AwsSession())
-
-		logGroupName := targetService.AwsCloudWatchLogGroup.LogGroupName
-
-		input, err := targetService.AwsCloudWatchLogGroup.Input()
+		_, err =  infra.setupCloudWatchLogGroup(log, cfg,  targetService.AwsCloudWatchLogGroup)
 		if err != nil {
-			return err
+			return nil
 		}
-
-		// If no log group was found, create one.
-		_, err = svc.CreateLogGroup(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
-				return errors.Wrapf(err, "Failed to create log group '%s'", logGroupName)
-			}
-
-			log.Printf("\t\tFound: %s", logGroupName)
-		} else {
-			log.Printf("\t\tCreated: %s", logGroupName)
-		}
-
-		log.Printf("\t%s\tLog Group setup\n", Success)
 	}
 
 	// Step 5: If an Elastic Load Balancer is enabled, then ensure one exists else create one.
@@ -478,163 +143,11 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 		// If HTTPS enabled on ELB, then need to find ARN certificates first.
 		var certificateArn string
 		if targetService.EnableHTTPS {
-			log.Println("\tACM - Find Elastic Load Balancer")
-
-			svc := acm.New(cfg.AwsSession())
-
-			err := svc.ListCertificatesPages(&acm.ListCertificatesInput{},
-				func(res *acm.ListCertificatesOutput, lastPage bool) bool {
-					for _, cert := range res.CertificateSummaryList {
-						if *cert.DomainName == targetService.ServiceHostPrimary {
-							certificateArn = *cert.CertificateArn
-							return false
-						}
-					}
-					return !lastPage
-				})
+			certificate, err := infra.setupAcmCertificate(log, cfg, targetService.ServiceHostPrimary, targetService.ServiceHostNames)
 			if err != nil {
-				return errors.Wrapf(err, "Failed to list certificates for '%s'", targetService.ServiceHostPrimary)
+				return err
 			}
-
-			if certificateArn == "" {
-				// Create hash of all the domain names to be used to mark unique requests.
-				idempotencyToken := targetService.ServiceHostPrimary + "|" + strings.Join(targetService.ServiceHostNames, "|")
-				idempotencyToken = fmt.Sprintf("%x", md5.Sum([]byte(idempotencyToken)))
-
-				// If no certicate was found, create one.
-				createRes, err := svc.RequestCertificate(&acm.RequestCertificateInput{
-					// Fully qualified domain name (FQDN), such as www.example.com, that you want
-					// to secure with an ACM certificate. Use an asterisk (*) to create a wildcard
-					// certificate that protects several sites in the same domain. For example,
-					// *.example.com protects www.example.com, site.example.com, and images.example.com.
-					//
-					// The first domain name you enter cannot exceed 63 octets, including periods.
-					// Each subsequent Subject Alternative Name (SAN), however, can be up to 253
-					// octets in length.
-					//
-					// DomainName is a required field
-					DomainName: aws.String(targetService.ServiceHostPrimary),
-
-					// Customer chosen string that can be used to distinguish between calls to RequestCertificate.
-					// Idempotency tokens time out after one hour. Therefore, if you call RequestCertificate
-					// multiple times with the same idempotency token within one hour, ACM recognizes
-					// that you are requesting only one certificate and will issue only one. If
-					// you change the idempotency token for each call, ACM recognizes that you are
-					// requesting multiple certificates.
-					IdempotencyToken: aws.String(idempotencyToken),
-
-					// Currently, you can use this parameter to specify whether to add the certificate
-					// to a certificate transparency log. Certificate transparency makes it possible
-					// to detect SSL/TLS certificates that have been mistakenly or maliciously issued.
-					// Certificates that have not been logged typically produce an error message
-					// in a browser. For more information, see Opting Out of Certificate Transparency
-					// Logging (https://docs.aws.amazon.com/acm/latest/userguide/acm-bestpractices.html#best-practices-transparency).
-					Options: &acm.CertificateOptions{
-						CertificateTransparencyLoggingPreference: aws.String("DISABLED"),
-					},
-
-					// Additional FQDNs to be included in the Subject Alternative Name extension
-					// of the ACM certificate. For example, add the name www.example.net to a certificate
-					// for which the DomainName field is www.example.com if users can reach your
-					// site by using either name. The maximum number of domain names that you can
-					// add to an ACM certificate is 100. However, the initial limit is 10 domain
-					// names. If you need more than 10 names, you must request a limit increase.
-					// For more information, see Limits (https://docs.aws.amazon.com/acm/latest/userguide/acm-limits.html).
-					SubjectAlternativeNames: aws.StringSlice(targetService.ServiceHostNames),
-
-					// The method you want to use if you are requesting a public certificate to
-					// validate that you own or control domain. You can validate with DNS (https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-dns.html)
-					// or validate with email (https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-email.html).
-					// We recommend that you use DNS validation.
-					ValidationMethod: aws.String("DNS"),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to create certificate '%s'", targetService.ServiceHostPrimary)
-				}
-				certificateArn = *createRes.CertificateArn
-
-				log.Printf("\t\tCreated certificate '%s'", targetService.ServiceHostPrimary)
-			} else {
-				log.Printf("\t\tFound certificate '%s'", targetService.ServiceHostPrimary)
-			}
-
-			descRes, err := svc.DescribeCertificate(&acm.DescribeCertificateInput{
-				CertificateArn: aws.String(certificateArn),
-			})
-			if err != nil {
-				return errors.Wrapf(err, "Failed to describe certificate '%s'", certificateArn)
-			}
-			cert := descRes.Certificate
-
-			log.Printf("\t\t\tStatus: %s", *cert.Status)
-
-			if *cert.Status == "PENDING_VALIDATION" {
-				svc := route53.New(cfg.AwsSession())
-
-				log.Println("\t\t\tList all hosted zones.")
-
-				var zoneValOpts = map[string][]*acm.DomainValidation{}
-				for _, opt := range cert.DomainValidationOptions {
-					var found bool
-					for zoneId, aNames := range zoneArecNames {
-						for _, aName := range aNames {
-							fmt.Println(*opt.DomainName, " ==== ", aName)
-
-							if *opt.DomainName == aName {
-								if _, ok := zoneValOpts[zoneId]; !ok {
-									zoneValOpts[zoneId] = []*acm.DomainValidation{}
-								}
-								zoneValOpts[zoneId] = append(zoneValOpts[zoneId], opt)
-								found = true
-								break
-							}
-						}
-
-						if found {
-							break
-						}
-					}
-
-					if !found {
-						return errors.Errorf("Failed to find zone ID for '%s'", *opt.DomainName)
-					}
-				}
-
-				for zoneId, opts := range zoneValOpts {
-					for _, opt := range opts {
-						if *opt.ValidationStatus == "SUCCESS" {
-							continue
-						}
-
-						input := &route53.ChangeResourceRecordSetsInput{
-							ChangeBatch: &route53.ChangeBatch{
-								Changes: []*route53.Change{
-									&route53.Change{
-										Action: aws.String("UPSERT"),
-										ResourceRecordSet: &route53.ResourceRecordSet{
-											Name: opt.ResourceRecord.Name,
-											ResourceRecords: []*route53.ResourceRecord{
-												&route53.ResourceRecord{Value: opt.ResourceRecord.Value},
-											},
-											Type: opt.ResourceRecord.Type,
-											TTL:  aws.Int64(60),
-										},
-									},
-								},
-							},
-							HostedZoneId: aws.String(zoneId),
-						}
-
-						log.Printf("\t\t\tAdded verification record for '%s'.\n", *opt.ResourceRecord.Name)
-						_, err := svc.ChangeResourceRecordSets(input)
-						if err != nil {
-							return errors.Wrapf(err, "Failed to update A records for zone '%s'", zoneId)
-						}
-					}
-				}
-			}
-
-			log.Printf("\t%s\tUsing ACM Certicate '%s'.\n", Success, certificateArn)
+			certificateArn = certificate.CertificateArn
 		}
 
 		log.Println("EC2 - Find Elastic Load Balancer")
@@ -921,61 +434,9 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Deplo
 	}
 
 	// Step 6: Try to find AWS ECS Cluster by name or create new one.
-	{
-		log.Println("ECS - Get or Create Cluster")
-
-		svc := ecs.New(cfg.AwsSession())
-
-		clusterName := targetService.AwsEcsCluster.ClusterName
-
-		var ecsCluster *ecs.Cluster
-		descRes, err := svc.DescribeClusters(&ecs.DescribeClustersInput{
-			Clusters: []*string{aws.String(clusterName)},
-		})
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != ecs.ErrCodeClusterNotFoundException {
-				return errors.Wrapf(err, "Failed to describe cluster '%s'", clusterName)
-			}
-		} else if len(descRes.Clusters) > 0 {
-			ecsCluster = descRes.Clusters[0]
-		}
-
-		if ecsCluster == nil || *ecsCluster.Status == "INACTIVE" {
-			input, err := targetService.AwsEcsCluster.Input()
-			if err != nil {
-				return err
-			}
-
-			// If no cluster was found, create one.
-			createRes, err := svc.CreateCluster(input)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to create cluster '%s'", clusterName)
-			}
-			ecsCluster = createRes.Cluster
-
-			log.Printf("\t\tCreated: %s.", *ecsCluster.ClusterArn)
-		} else {
-			log.Printf("\t\tFound: %s.", *ecsCluster.ClusterArn)
-
-			// The number of services that are running on the cluster in an ACTIVE state.
-			// You can view these services with ListServices.
-			log.Printf("\t\t\tActiveServicesCount: %d.", *ecsCluster.ActiveServicesCount)
-			// The number of tasks in the cluster that are in the PENDING state.
-			log.Printf("\t\t\tPendingTasksCount: %d.", *ecsCluster.PendingTasksCount)
-			// The number of container instances registered into the cluster. This includes
-			// container instances in both ACTIVE and DRAINING status.
-			log.Printf("\t\t\tRegisteredContainerInstancesCount: %d.", *ecsCluster.RegisteredContainerInstancesCount)
-			// The number of tasks in the cluster that are in the RUNNING state.
-			log.Printf("\t\t\tRunningTasksCount: %d.", *ecsCluster.RunningTasksCount)
-		}
-		targetService.AwsEcsCluster.result = ecsCluster
-
-		// The status of the cluster. The valid values are ACTIVE or INACTIVE. ACTIVE
-		// indicates that you can register container instances with the cluster and
-		// the associated instances can accept tasks.
-		log.Printf("\t\t\tStatus: %s.", *ecsCluster.Status)
-
-		log.Printf("\t%s\tECS Cluster setup.\n", Success)
+	ecsCluster, err := infra.GetAwsEcsCluster(targetService.AwsEcsCluster.ClusterName)
+	if err != nil {
+		return err
 	}
 
 	// Step 7: Register a new ECS task definition.

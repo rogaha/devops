@@ -3,6 +3,7 @@ package devdeploy
 import (
 	"encoding/json"
 	"net/url"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/aws/aws-sdk-go/aws"
@@ -71,6 +72,80 @@ func (db DBConnInfo) URL() string {
 	return dbUrl.String()
 }
 
+// ProjectFunction configures a function for build and deploy.
+type ProjectFunction struct {
+	// Required flags.
+	FuncName     string `validate:"required" example:"web-api"`
+	Dockerfile   string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+	DockerBuildDir     string `validate:"required"`
+	ReleaseTag   string `validate:"required"`
+	CodeS3Key    string `validate:"required"`
+	CodeS3Bucket string `validate:"required"`
+
+	// AwsLambdaFunction defines the details for a lambda function.
+	AwsLambdaFunction *AwsLambdaFunction `validate:"required"`
+
+	// AwsIamRole defines the details for assigning the lambda function to use a custom role.
+	AwsIamRole *AwsIamRole `validate:"required"`
+
+	// AwsIamPolicy defines the details for created a custom policy for the lambda function.
+	AwsIamPolicy *AwsIamPolicy `validate:"required"`
+
+	// Optional flags.
+	DockerBuildContext string `validate:"omitempty" example:"."`
+	DockerBuildTargetLayer        string `validate:"omitempty" example:"lambda"`
+	DockerBuildArgs          map[string]string
+	EnableVPC bool `validate:"omitempty"`
+}
+
+// ProjectService configures a service for build and deploy.
+type ProjectService struct {
+	// Required flags.
+	ServiceName string `validate:"required" example:"web-api"`
+	Dockerfile  string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+	DockerBuildDir    string `validate:"required"`
+	ReleaseTag  string `validate:"required"`
+
+	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
+	AwsEcsCluster *AwsEcsCluster `validate:"required"`
+
+	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
+	AwsEcsService *AwsEcsService `validate:"required"`
+
+	// AwsEcsTaskDefinition defines the task definition.
+	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
+
+	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
+	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
+	AwsEcsExecutionRole *AwsIamRole `validate:"required"`
+
+	// AwsEcsExecutionRole defines the name of the iam task role for ecs task and the detailed needed to create doesn't exist.
+	// This role is used by the task itself for calling other AWS services.
+	AwsEcsTaskRole *AwsIamRole `validate:"required"`
+
+	// AwsCloudWatchLogGroup defines the name of the cloudwatch log group that will be used to store logs for the ECS
+	// task.
+	AwsCloudWatchLogGroup *AwsCloudWatchLogGroup `validate:"required"`
+
+	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
+	AwsElbLoadBalancer *AwsElbLoadBalancer `validate:"omitempty"`
+
+	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
+	// it does not exist.
+	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
+
+	// Optional flags.
+	EnableHTTPS        bool     `validate:"omitempty"`
+	ServiceHostPrimary string   `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
+	ServiceHostNames   []string `validate:"omitempty,dive,fqdn"`
+	StaticFilesDir      string `validate:"omitempty" example:"./cmd/web-api"`
+	StaticFilesS3Prefix string `validate:"omitempty"`
+	DockerBuildContext string `validate:"omitempty" example:"."`
+	DockerBuildTargetLayer        string `validate:"omitempty" example:"lambda"`
+	DockerBuildArgs          map[string]string
+	ReleaseImage string `validate:"omitempty"`
+}
+
 // Tag describes a key/value pair that will help identify a resource.
 type Tag struct {
 	// One part of a key-value pair that make up a tag. A key is a general label
@@ -118,9 +193,24 @@ type AwsEcrRepository struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ecr.CreateRepositoryInput) error `json:"-"`
+}
 
-	// result is an unexported field that contains Repository details.
-	result *ecr.Repository
+// AwsEcrRepositoryResult wraps *ecr.Repository.
+type AwsEcrRepositoryResult struct  {
+	// The name of the repository.
+	RepositoryName string
+
+	// The Amazon Resource Name (ARN) that identifies the repository.
+	RepositoryArn string
+
+	// The URI for the repository. You can use this URI for Docker push or pull operations.
+	RepositoryUri string
+
+	// The date and time when the repository was created.
+	CreatedAt time.Time
+
+	// The md5 hash of the input used to create the Repository.
+	InputHash string
 }
 
 // Input returns the AWS input for ecr.CreateRepository.
@@ -172,10 +262,21 @@ type AwsEc2Vpc struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ec2.CreateVpcInput) error `json:"-"`
+}
 
-	// result is an unexported field that contains VPC details.
-	result    *ec2.Vpc
-	subnetIds []string
+// AwsEc2VpcResult wraps *ec2.Vpc.
+type AwsEc2VpcResult struct {
+	// The ID of the VPC. This is optional when IsDefault is set to true which will find the default VPC.
+	VpcId string `type:"string"`
+
+	// Indicates whether the VPC is the default VPC.
+	IsDefault bool `type:"boolean"`
+
+	// List of subnet IDs associated with the VPC.
+	SubnetIds []string
+
+	// The md5 hash of the input used to create the Vpc.
+	InputHash string
 }
 
 // Input returns the AWS input for ec2.CreateVpc.
@@ -260,14 +361,29 @@ type AwsEc2SecurityGroup struct {
 	// Description is a required field
 	Description string `type:"string" required:"true"`
 
+	// list of ingress rules for the security group.
+	IngressRules []*ec2.AuthorizeSecurityGroupIngressInput
+
 	// A list of cost allocation tags to be added to this resource.
 	Tags []Tag `type:"list"`
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ec2.CreateSecurityGroupInput) error `json:"-"`
+}
 
-	// result is an unexported field that contains security group details.
-	result *ec2.SecurityGroup
+// AwsEc2SecurityGroupResult wraps *ec2.SecurityGroup.
+type AwsEc2SecurityGroupResult struct {
+	// The ID of the security group.
+	GroupId string `locationName:"groupId" type:"string"`
+
+	// The name of the security group.
+	GroupName string `locationName:"groupName" type:"string"`
+
+	// [VPC only] The ID of the VPC for the security group.
+	VpcId *string `locationName:"vpcId" type:"string"`
+
+	// The md5 hash of the input used to create the SecurityGroup.
+	InputHash string
 }
 
 // Input returns the AWS input for ec2.CreateSecurityGroup.
@@ -320,6 +436,28 @@ type AwsS3Bucket struct {
 	CloudFront *AwsS3BucketCloudFront
 }
 
+// AwsS3BucketResult defines the created S3 Bucket.
+type AwsS3BucketResult struct {
+	// BucketName is a required field
+	BucketName string
+
+	// TempPrefix used by services for short term storage. If not empty, a lifecycle policy must be applied for the prefix.
+	TempPrefix string
+
+	// IsPublic defined if the S3 Bucket should allow public access. If false, then PublicAccessBlock is required.
+	IsPublic bool
+
+	// Specifies the region where the bucket will be created. If you don't specify
+	// a region, the bucket is created in US East (N. Virginia) Region (us-east-1).
+	Region string
+
+	// The md5 hash of the input used to create the S3Bucket.
+	InputHash string
+
+	// Optional Cloudfront Distribution.
+	CloudFront *AwsCloudFrontDistributionResult
+}
+
 // Input returns the AWS input for s3.CreateBucket.
 func (m *AwsS3Bucket) Input() (*s3.CreateBucketInput, error) {
 	input := &s3.CreateBucketInput{
@@ -363,6 +501,25 @@ type AwsS3BucketCloudFront struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *cloudfront.CreateDistributionInput) error `json:"-"`
+}
+
+// AwsCloudFrontDistributionResult defines the created Cloudfront Distribution.
+type AwsCloudFrontDistributionResult struct {
+	// The identifier for the distribution. For example: EDFDVBD632BHDS5.
+	Id string `type:"string" required:"true"`
+
+	// The domain name corresponding to the distribution, for example, d111111abcdef8.cloudfront.net.
+	DomainName string `type:"string" required:"true"`
+
+	// The ARN (Amazon Resource Name) for the distribution.
+	ARN string `type:"string" required:"true"`
+
+	// The current configuration information for the distribution. Send a GET request
+	// to the /CloudFront API version/distribution ID/config resource.
+	DistributionConfig cloudfront.DistributionConfig `type:"structure" required:"true"`
+
+	// The md5 hash of the input used to create the Distribution.
+	InputHash string
 }
 
 // Input returns the AWS input for cloudfront.CreateDistribution.
@@ -476,9 +633,57 @@ type AwsElasticCacheCluster struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *elasticache.CreateCacheClusterInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *elasticache.CacheCluster
+// AwsElasticCacheClusterResult wraps *elasticache.CacheCluster.
+type AwsElasticCacheClusterResult struct {
+
+	// The user-supplied identifier of the cluster. This identifier is a unique
+	// key that identifies a cluster.
+	CacheClusterId string
+
+	// Represents a Memcached cluster endpoint which, if Automatic Discovery is
+	// enabled on the cluster, can be used by an application to connect to any node
+	// in the cluster. The configuration endpoint will always have .cfg in it.
+	//
+	// Example: mem-3.9dvc4r.cfg.usw2.cache.amazonaws.com:11211
+	ConfigurationEndpoint *AwsElasticCacheClusterEndpoint
+
+	// A list of cache nodes that are members of the cluster.
+	CacheNodes []*AwsElasticCacheNode
+
+	// The md5 hash of the input used to create the CacheCluster.
+	InputHash string
+}
+
+// AwsElasticCacheClusterEndpoint represents the information required for client programs to connect to a cache node.
+type AwsElasticCacheClusterEndpoint struct {
+	// The DNS hostname of the cache node.
+	Address string `type:"string"`
+
+	// The port number that the cache engine is listening on.
+	Port int64 `type:"integer"`
+}
+
+// AwsElasticCacheClusterResult Represents the information required for client programs to connect to a cache node.
+type AwsElasticCacheNode struct {
+	// The cache node identifier. A node ID is a numeric identifier (0001, 0002,
+	// etc.). The combination of cluster ID and node ID uniquely identifies every
+	// cache node used in a customer's AWS account.
+	CacheNodeId string
+
+	// The Availability Zone where this node was created and now resides.
+	CustomerAvailabilityZone string
+
+	// The date and time when the cache node was created.
+	CreatedAt time.Time
+
+	// The hostname for connecting to this cache node.
+	Endpoint AwsElasticCacheClusterEndpoint
+
+	// The ID of the primary node to which this read replica node is synchronized.
+	// If this field is empty, this node is not associated with a primary cluster.
+	SourceCacheNodeId *string
 }
 
 // Input returns the AWS input for elasticache.CreateCacheCluster.
@@ -614,9 +819,51 @@ type AwsRdsDBCluster struct {
 
 	// Optional to provide method to be excecuted after database has been created.
 	AfterCreate func(res *rds.DBCluster, info *DBConnInfo, db *sqlx.DB) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *rds.DBCluster
+// AwsRdsDBClusterResult wraps *rds.DBCluster.
+type AwsRdsDBClusterResult struct {
+	// The Amazon Resource Name (ARN) for the DB cluster.
+	DBClusterArn string
+
+	// Contains a user-supplied DB cluster identifier. This identifier is the unique
+	// key that identifies a DB cluster.
+	DBClusterIdentifier string
+
+	// Contains the name of the initial database of this DB cluster that was provided
+	// at create time, if one was specified when the DB cluster was created. This
+	// same name is returned for the life of the DB cluster.
+	DatabaseName string
+
+	// Specifies the connection endpoint for the primary instance of the DB cluster.
+	Endpoint string
+
+	// Specifies the port that the database engine is listening on.
+	Port int64
+
+	// Provides the name of the database engine to be used for this DB cluster.
+	Engine string
+
+	// The DB engine mode of the DB cluster, either provisioned, serverless, or
+	// parallelquery.
+	EngineMode string
+
+	// Indicates the database engine version.
+	EngineVersion string
+
+	// Contains the master username for the DB instance.
+	MasterUsername string
+
+	// Specifies the time when the DB cluster was created, in Universal Coordinated
+	// Time (UTC).
+	CreatedAt time.Time
+
+	// DBConnInfo defines the database connection details.
+	// This is optional and will get populated when RDS Cluster is created.
+	DBConnInfo *DBConnInfo
+
+	// The md5 hash of the input used to create the DBCluster.
+	InputHash string
 }
 
 // Input returns the AWS input for rds.CreateDBCluster.
@@ -828,9 +1075,53 @@ type AwsRdsDBInstance struct {
 
 	// Optional to provide method to be excecuted after database has been created.
 	AfterCreate func(res *rds.DBInstance, info *DBConnInfo, db *sqlx.DB) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *rds.DBInstance
+// AwsRdsDBInstanceResult wraps *rds.DBInstance.
+type AwsRdsDBInstanceResult struct {
+	// If the DB instance is a member of a DB cluster, contains the name of the
+	// DB cluster that the DB instance is a member of.
+	DBClusterIdentifier *string
+
+	// The Amazon Resource Name (ARN) for the DB instance.
+	DBInstanceArn string
+
+	// Contains the name of the compute and memory capacity class of the DB instance.
+	DBInstanceClass string
+
+	// Contains a user-supplied database identifier. This identifier is the unique
+	// key that identifies a DB instance.
+	DBInstanceIdentifier string
+
+	// Contains the name of the initial database of this DB cluster that was provided
+	// at create time, if one was specified when the DB cluster was created. This
+	// same name is returned for the life of the DB cluster.
+	DatabaseName string
+
+	// Specifies the connection endpoint for the primary instance of the DB cluster.
+	Endpoint string
+
+	// Specifies the port that the database engine is listening on.
+	Port int64
+
+	// Provides the name of the database engine to be used for this DB instance.
+	Engine string
+
+	// Indicates the database engine version.
+	EngineVersion string
+
+	// Contains the master username for the DB instance.
+	MasterUsername string
+
+	// Provides the date and time the DB instance was created.
+	CreatedAt  time.Time
+
+	// DBConnInfo defines the database connection details.
+	// This is optional and will get populated when RDS Instance is created.
+	DBConnInfo *DBConnInfo
+
+	// The md5 hash of the input used to create the DBInstance.
+	InputHash string
 }
 
 // Input returns the AWS input for rds.CreateDBInstance.
@@ -891,9 +1182,21 @@ type AwsEcsCluster struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *ecs.CreateClusterInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *ecs.Cluster
+// AwsEcsClusterResult wraps *ecs.Cluster.
+type AwsEcsClusterResult struct {
+	// The Amazon Resource Name (ARN) that identifies the cluster. The ARN contains
+	// the arn:aws:ecs namespace, followed by the Region of the cluster, the AWS
+	// account ID of the cluster owner, the cluster namespace, and then the cluster
+	// name. For example, arn:aws:ecs:region:012345678910:cluster/test.
+	ClusterArn string
+
+	// A user-generated string that you use to identify your cluster.
+	ClusterName string
+
+	// The md5 hash of the input used to create the Cluster.
+	InputHash string
 }
 
 // Input returns the AWS input for ecs.CreateCluster.
@@ -1016,9 +1319,14 @@ type AwsEcsService struct {
 
 	// Optional to provide additional details to the update input.
 	PreUpdate func(input *ecs.UpdateServiceInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *ecs.Service
+// AwsEcsServiceResult wraps *ecs.Service.
+type AwsEcsServiceResult struct {
+	*ecs.Service
+
+	// The md5 hash of the input used to create the Service.
+	InputHash string
 }
 
 // AwsEcsTaskDefinition defines the details needed to register an ecs task definition.
@@ -1032,9 +1340,6 @@ type AwsEcsTaskDefinition struct {
 	// Optional to provide additional details to the register input.
 
 	PreRegister func(input *ecs.RegisterTaskDefinitionInput) error
-
-	// contains filtered or unexported fields
-	result *ecs.TaskDefinition
 }
 
 // CreateInput returns the AWS input for ecs.CreateService.
@@ -1171,9 +1476,24 @@ type AwsIamRole struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *iam.CreateRoleInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *iam.Role
+// AwsIamRoleResult wraps *iam.Role.
+type AwsIamRoleResult struct  {
+	// The stable and unique string identifying the role.
+	RoleId string
+
+	// The friendly name that identifies the role.
+	RoleName string
+
+	// The Amazon Resource Name (ARN) specifying the role.
+	Arn string
+
+	// The date and time when the role was created.
+	CreatedAt time.Time
+
+	// The md5 hash of the input used to create the Role.
+	InputHash string
 }
 
 // Input returns the AWS input for iam.CreateRole.
@@ -1199,14 +1519,6 @@ func (m *AwsIamRole) Input() (*iam.CreateRoleInput, error) {
 	}
 
 	return input, nil
-}
-
-// Arn returns the ARN from the found or created IAM role.
-func (m *AwsIamRole) Arn() string {
-	if m == nil || m.result == nil || m.result.Arn == nil {
-		return ""
-	}
-	return *m.result.Arn
 }
 
 // AwsIamPolicy defines the details needed to create an iam policy.
@@ -1237,17 +1549,24 @@ type AwsIamPolicy struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *iam.CreatePolicyInput) error `json:"-"`
-
-	// contains filtered or unexported fields
-	result *iam.Policy
 }
 
-// Arn returns the ARN from the found or created IAM Policy.
-func (m *AwsIamPolicy) Arn() string {
-	if m == nil || m.result == nil || m.result.Arn == nil {
-		return ""
-	}
-	return *m.result.Arn
+// AwsIamPolicyResult wraps *iam.Policy.
+type AwsIamPolicyResult struct  {
+	// The stable and unique string identifying the policy.
+	PolicyId string
+
+	// The friendly name (not ARN) identifying the policy.
+	PolicyName string
+
+	// The Amazon Resource Name (ARN). ARNs are unique identifiers for AWS resources.
+	Arn string
+
+	// The date and time when the policy was created.
+	CreatedAt time.Time
+
+	// The md5 hash of the input used to create the Policy.
+	InputHash string
 }
 
 // Input returns the AWS input for iam.CreatePolicy.
@@ -1301,6 +1620,15 @@ type AwsCloudWatchLogGroup struct {
 	PreCreate func(input *cloudwatchlogs.CreateLogGroupInput) error `json:"-"`
 }
 
+// AwsCloudWatchLogGroupResult defines the created Cloudwatch Log Group.
+type AwsCloudWatchLogGroupResult struct {
+	// The name of the log group.
+	LogGroupName string
+
+	// The md5 hash of the input used to create the Log Group.
+	InputHash string
+}
+
 // Input returns the AWS input for cloudwatchlogs.CreateLogGroup.
 func (m *AwsCloudWatchLogGroup) Input() (*cloudwatchlogs.CreateLogGroupInput, error) {
 
@@ -1321,6 +1649,23 @@ func (m *AwsCloudWatchLogGroup) Input() (*cloudwatchlogs.CreateLogGroupInput, er
 
 	return input, nil
 }
+
+// AwsAcmCertificateResult defines the created ACM certificate.
+type AwsAcmCertificateResult struct {
+	// Amazon Resource Name (ARN) of the certificate. This is of the form:
+	CertificateArn string
+
+	// Fully qualified domain name (FQDN), such as www.example.com or example.com,
+	// for the certificate.
+	DomainName string
+
+	// The status of the certificate.
+	Status string
+
+	// The md5 hash of the input used to create the Certificate.
+	InputHash string
+}
+
 
 // AwsElbLoadBalancer defines the details needed to create an elbv2 load balancer.
 type AwsElbLoadBalancer struct {
@@ -1366,9 +1711,14 @@ type AwsElbLoadBalancer struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *elbv2.CreateLoadBalancerInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *elbv2.LoadBalancer
+// AwsElbLoadBalancerResult wraps *elbv2.LoadBalancer.
+type AwsElbLoadBalancerResult struct {
+	*elbv2.LoadBalancer
+
+	// The md5 hash of the input used to create the LoadBalancer.
+	InputHash string
 }
 
 // Input returns the AWS input for elbv2.CreateLoadBalance.
@@ -1495,9 +1845,14 @@ type AwsElbTargetGroup struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *elbv2.CreateTargetGroupInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	result *elbv2.TargetGroup
+// AwsElbTargetGroupResult wraps *elbv2.TargetGroup.
+type AwsElbTargetGroupResult struct {
+	*elbv2.TargetGroup
+
+	// The md5 hash of the input used to create the TargetGroup.
+	InputHash string
 }
 
 // Input returns the AWS input for elbv2.CreateTargetGroup.
@@ -1533,6 +1888,22 @@ func (m *AwsElbTargetGroup) Input(vpcId string) (*elbv2.CreateTargetGroupInput, 
 	return input, nil
 }
 
+// AwsRoute53ZoneResult defines the route 53 zone.
+type AwsRoute53ZoneResult struct {
+	// The ID that Amazon Route 53 assigned to the hosted zone when you created it.
+	ZoneId string
+
+	// The name of the domain. For public hosted zones, this is the name that you
+	// have registered with your DNS registrar.
+	Name string
+
+	// List of subdomains for the zone.
+	Entries []string
+
+	// List of associated domains.
+	AssocDomains []string
+}
+
 // AwsSdPrivateDnsNamespace defines the details needed to create a service discovery private namespace.
 type AwsSdPrivateDnsNamespace struct {
 	// The name that you want to assign to this namespace. When you create a private
@@ -1550,9 +1921,28 @@ type AwsSdPrivateDnsNamespace struct {
 
 	// The set of services for the dns namespace.
 	Service *AwsSdService `type:"list"`
+}
 
-	// contains filtered or unexported fields
-	result *servicediscovery.NamespaceSummary
+// AwsSdPrivateDnsNamespaceResult  wraps *servicediscovery.NamespaceSummary.
+type AwsSdPrivateDnsNamespaceResult struct {
+	// The ID of a namespace.
+	Id string
+
+	// The name of the namespace, such as example.com.
+	Name string
+
+	// The Amazon Resource Name (ARN) that AWS Cloud Map assigns to the namespace
+	// when you create it.
+	Arn string
+
+	// The type of the namespace. Valid values are DNS_PUBLIC and DNS_PRIVATE.
+	Type string
+
+	// List of services associated with the namespace.
+	Services map[string]*AwsSdServiceResult
+
+	// The md5 hash of the input used to create the TargetGroup.
+	InputHash string
 }
 
 // Input returns the AWS input for servicediscovery.CreatePrivateDnsNamespace.
@@ -1610,9 +2000,25 @@ type AwsSdService struct {
 
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *servicediscovery.CreateServiceInput) error `json:"-"`
+}
 
-	// contains filtered or unexported fields
-	resultArn string
+// AwsSdServiceResult .......
+type AwsSdServiceResult struct {
+	// The ID that AWS Cloud Map assigned to the service when you created it.
+	Id string
+
+	// The name of the service.
+	Name string
+
+	// The Amazon Resource Name (ARN) that AWS Cloud Map assigns to the service
+	// when you create it.
+	Arn string
+
+	// The ID of the namespace that was used to create the service.
+	NamespaceId string
+
+	// The md5 hash of the input used to create the TargetGroup.
+	InputHash string
 }
 
 // Input returns the AWS input for servicediscovery.CreateService.
@@ -1701,7 +2107,7 @@ type AwsLambdaFunction struct {
 	UpdateEnvironment func(vars map[string]string) error
 
 	// contains filtered or unexported fields
-	result *lambda.FunctionConfiguration
+	//result *lambda.FunctionConfiguration
 }
 
 // CreateInput returns the AWS input for lambda.CreateFunction.
