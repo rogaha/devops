@@ -27,11 +27,11 @@ var ServiceNames = []Service{
 	ServiceGoWebApi,
 }
 
-// NewServiceContext returns the ServiceContext for a service that is configured for the target deployment env.
+// NewService returns the ProjectService for a service that is configured for the target deployment env.
 func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectService, error) {
 
 	// =========================================================================
-	// New service context.
+	// New project service.
 	ctx := &devdeploy.ProjectService{
 		Name:               serviceName,
 		CodeDir:            filepath.Join(cfg.ProjectRoot, "examples", serviceName),

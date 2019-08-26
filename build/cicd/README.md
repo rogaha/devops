@@ -336,20 +336,19 @@ Access/Secret Keys are required
 
 ### Examples
 
-
-Setup the infrastructure for _dev_
+Setup the infrastructure for _prod_
 ```bash
-$ cicid --env=dev deploy infrastructure --dry-run=false
+$ cicid --env=prod deploy infrastructure --dry-run=false
 ```
 
 Build the example service _aws-ecs-go-web-api_ 
 ```bash
-$ cicid --env=dev build service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
+$ cicid --env=prod build service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
 ```
 
 Deploy the example service _aws-ecs-go-web-api_ 
 ```bash
-$ cicid --env=dev deploy service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
+$ cicid --env=prod deploy service --name=aws-ecs-go-web-api --release-tag=testv1 --dry-run=false
 ```
 
 

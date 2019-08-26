@@ -162,7 +162,7 @@ func main() {
 				{
 					Name:    "infrastructure",
 					Aliases: []string{"infra"},
-					Usage:   "deploy infrastructure",
+					Usage:   "deploy infrastructure for target environment",
 					Flags: []cli.Flag{
 						cli.BoolFlag{
 							Name:  "dry-run",

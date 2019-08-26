@@ -656,7 +656,12 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 		if s3Bucket.CloudFront != nil {
 
-			bucketRes := infra.AwsS3Buckets[bucketName]
+			var cloudfrontResult *AwsCloudFrontDistributionResult
+			if bucketRes, ok := infra.AwsS3Buckets[bucketName]; ok {
+				if bucketRes.CloudFront != nil {
+					cloudfrontResult = bucketRes.CloudFront
+				}
+			}
 
 			input, err := s3Bucket.CloudFront.Input()
 			if err != nil {
@@ -664,16 +669,16 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 			}
 			inputHash := getInputHash(input)
 
-			if bucketRes.CloudFront != nil {
-				if bucketRes.CloudFront.InputHash == inputHash && !infra.skipCache {
+			if cloudfrontResult != nil {
+				if cloudfrontResult.InputHash == inputHash && !infra.skipCache {
 					// If bucket found during create, returns it.
-					log.Printf("\t\t\t\t\tCloudFront Domain: %s.", bucketRes.CloudFront.DomainName)
+					log.Printf("\t\t\t\t\tCloudFront Domain: %s.", cloudfrontResult.DomainName)
 				} else {
-					bucketRes.CloudFront = nil
+					cloudfrontResult = nil
 				}
 			}
 
-			if bucketRes.CloudFront == nil {
+			if cloudfrontResult == nil {
 				log.Println("\t\t\t\tSetup Cloudfront Distribution")
 
 				bucketLoc := infra.awsCredentials.Region
@@ -795,13 +800,15 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					log.Printf("\t\t\t\tStatus: %s", *curDist.Status)
 				}
 
-				bucketRes.CloudFront = &AwsCloudFrontDistributionResult{
+				cloudfrontResult = &AwsCloudFrontDistributionResult{
 					Id:                 *curDist.Id,
 					DomainName:         *curDist.DomainName,
 					ARN:                *curDist.ARN,
 					DistributionConfig: *s3Bucket.CloudFront.DistributionConfig,
 					InputHash:          inputHash,
 				}
+
+				infra.AwsS3Buckets[bucketName].CloudFront = cloudfrontResult
 			}
 		}
 	}
