@@ -4,5 +4,5 @@
 .DS_Store
 tmp
 
-vendor/*
-!vendor/.gitkeep 
+build/go-pkg/*
+!build/go-pkg/README.md 

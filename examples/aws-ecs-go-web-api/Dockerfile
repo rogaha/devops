@@ -9,6 +9,9 @@ RUN apk --no-cache add \
 # Change dir to project base.
 WORKDIR /project/build
 
+# Enable gitlab to populate package directory from artifact.
+COPY build/go-pkg /go/pkg
+
 # Enable go modules.
 ENV GO111MODULE="on"
 COPY go.mod .
@@ -18,7 +21,7 @@ RUN go mod download
 # Install fresh for auto-reloads for dev when running docker-compose.
 RUN go get github.com/pilu/fresh
 
-
+RUN echo $GOPATH
 
 # LAYER: DEV - All the project go files.
 FROM build_base_golang AS dev
@@ -54,7 +57,7 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 FROM dev AS tester
 
 # Run the tests for the service being built.
-RUN go test -mod=vendor -v ./...
+RUN go test -v ./...
 
 
 
@@ -62,7 +65,7 @@ RUN go test -mod=vendor -v ./...
 #   * Seperate layer so can target only this layer to be executed.
 FROM dev AS builder
 
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags "-X main.build=${commit_ref}" -a -installsuffix nocgo -o /gosrv .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.build=${commit_ref}" -a -installsuffix nocgo -o /gosrv .
 
 
 

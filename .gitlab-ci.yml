@@ -35,12 +35,12 @@ cache:
   script:
     - 'go mod download'
     - 'go build -o cicd ./build/cicd'
-    - 'mkdir -p ./go && cp -r $GOPATH/pkg ./go/ && find ./go -type d'
+    - 'cp -r $GOPATH/pkg ./build/go-pkg'
     - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
       - cicd
-      - go
+      - ./build/go-pkg
     expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
