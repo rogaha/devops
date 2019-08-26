@@ -36,6 +36,8 @@ import (
 	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 )
 
+const AwsSecurityGroupSourceGroupSelf = "self"
+
 // AwsSecretID defines the key path for a secret by name.
 func AwsSecretID(projectName, env, secretName string) string {
 	return filepath.Join(projectName, env, secretName)
@@ -169,7 +171,7 @@ func (infra *Infrastructure) GetAwsIamPolicy(policyName string) (*AwsIamPolicyRe
 // setupAwsIamPolicy ensures the AWS IAM policy exists else creates it.
 func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *AwsIamPolicy) (*AwsIamPolicyResult, error) {
 
-	log.Println("\tS3 - Setup IAM Policy")
+	log.Println("\tIAM - Setup IAM Policy")
 
 	input, err := targetPolicy.Input()
 	if err != nil {
@@ -328,7 +330,7 @@ func (infra *Infrastructure) GetAwsIamRole(roleName string) (*AwsIamRoleResult, 
 // setupAwsIamRole ensures the AWS IAM role exists else creates it.
 func (infra *Infrastructure) setupAwsIamRole(log *log.Logger, targetRole *AwsIamRole) (*AwsIamRoleResult, error) {
 
-	log.Println("\tS3 - Setup IAM Role")
+	log.Println("\tIAM - Setup IAM Role")
 
 	input, err := targetRole.Input()
 	if err != nil {
@@ -428,6 +430,8 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 		infra.AwsS3Buckets = make(map[string]*AwsS3BucketResult)
 	}
 
+	var results []*AwsS3BucketResult
+
 	var configure bool
 	for _, s3Bucket := range s3Buckets {
 		bucketName := s3Bucket.BucketName
@@ -481,13 +485,13 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 				bucketRegion = *s3Bucket.LocationConstraint
 			}
 
-			infra.AwsS3Buckets[bucketName] = &AwsS3BucketResult{
+			results = append(results, &AwsS3BucketResult{
 				BucketName: bucketName,
 				TempPrefix: s3Bucket.TempPrefix,
 				IsPublic:   s3Bucket.IsPublic,
 				Region:     bucketRegion,
 				InputHash:  inputHash,
-			}
+			})
 			configure = true
 		}
 	}
@@ -533,7 +537,7 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 				curRules = res.Rules
 			}
 
-			if diff := cmp.Diff(s3Bucket.LifecycleRules, curRules); diff != "" {
+			if diff := cmp.Diff(curRules, s3Bucket.LifecycleRules); diff != "" {
 				log.Printf("\t\t\t\tLifecycle rules diff - %s\n", diff)
 
 				_, err = svc.PutBucketLifecycleConfiguration(&s3.PutBucketLifecycleConfigurationInput{
@@ -554,14 +558,19 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 		// Add all the defined CORS rules for the bucket.
 		if len(s3Bucket.CORSRules) > 0 {
+			var curRules []*s3.CORSRule
 			res, err := svc.GetBucketCors(&s3.GetBucketCorsInput{
 				Bucket: aws.String(bucketName),
 			})
 			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to get CORS rules for s3 bucket '%s'", bucketName)
+				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != "NoSuchCORSConfiguration") {
+					return nil, errors.Wrapf(err, "Failed to get CORS rules for s3 bucket '%s'", bucketName)
+				}
+			} else {
+				curRules = s3Bucket.CORSRules
 			}
 
-			if diff := cmp.Diff(s3Bucket.CORSRules, res.CORSRules); diff != "" {
+			if diff := cmp.Diff(res.CORSRules, curRules); diff != "" {
 				log.Printf("\t\t\t\tCORS rules diff - %s\n", diff)
 
 				_, err := svc.PutBucketCors(&s3.PutBucketCorsInput{
@@ -603,7 +612,7 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 				}
 			}
 
-			if diff := cmp.Diff(policyMap, curMap); diff != "" {
+			if diff := cmp.Diff(curMap, policyMap); diff != "" {
 				log.Printf("\t\t\t\tPolicy diff - %s\n", diff)
 
 				_, err = svc.PutBucketPolicy(&s3.PutBucketPolicyInput{
@@ -619,14 +628,19 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 		// Block public access for all non-public buckets.
 		if s3Bucket.PublicAccessBlock != nil {
+			var curPublicAccessBlock *s3.PublicAccessBlockConfiguration
 			res, err := svc.GetPublicAccessBlock(&s3.GetPublicAccessBlockInput{
 				Bucket: aws.String(bucketName),
 			})
 			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to get public access block for s3 bucket '%s'", bucketName)
+				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != "NoSuchPublicAccessBlockConfiguration") {
+					return nil, errors.Wrapf(err, "Failed to get public access block for s3 bucket '%s'", bucketName)
+				}
+			} else {
+				curPublicAccessBlock = res.PublicAccessBlockConfiguration
 			}
 
-			if diff := cmp.Diff(s3Bucket.PublicAccessBlock, res.PublicAccessBlockConfiguration); diff != "" {
+			if diff := cmp.Diff(s3Bucket.PublicAccessBlock, curPublicAccessBlock); diff != "" {
 				log.Printf("\t\t\t\tPublic access bloc diff - %s\n", diff)
 
 				_, err = svc.PutPublicAccessBlock(&s3.PutPublicAccessBlockInput{
@@ -737,7 +751,7 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 					targetOriginId := *input.DistributionConfig.DefaultCacheBehavior.TargetOriginId
 
-					_, err = cloudfront.New(infra.awsCredentials.Session()).CreateDistribution(input)
+					_, err = cf.CreateDistribution(input)
 					if err != nil {
 						if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != cloudfront.ErrCodeDistributionAlreadyExists) {
 							return nil, errors.Wrapf(err, "Failed to create cloudfront distribution '%s'", targetOriginId)
@@ -751,6 +765,36 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					log.Printf("\t\t\t\t\tFound: %s.", domainName)
 				}
 
+				// The status of the distribution.
+				log.Printf("\t\t\t\tStatus: %s", *curDist.Status)
+
+				// If the distribute to become deployed so the domain name is set.
+				if *curDist.Status != "Deployed" {
+					log.Printf("\t\t\t\tWait for distribution to become deployed.")
+
+					err = cf.WaitUntilDistributionDeployed(&cloudfront.GetDistributionInput{
+						Id: curDist.Id,
+					})
+					if err != nil {
+						return nil, err
+					}
+
+					res, err := cf.GetDistribution(&cloudfront.GetDistributionInput{
+						Id: curDist.Id,
+					})
+					if err != nil {
+						return nil, err
+					}
+
+					curDist.Status = res.Distribution.Status
+					curDist.DomainName = res.Distribution.DomainName
+					curDist.ARN = res.Distribution.ARN
+					s3Bucket.CloudFront.DistributionConfig = res.Distribution.DistributionConfig
+
+					// The status of the distribution.
+					log.Printf("\t\t\t\tStatus: %s", *curDist.Status)
+				}
+
 				bucketRes.CloudFront = &AwsCloudFrontDistributionResult{
 					Id:                 *curDist.Id,
 					DomainName:         *curDist.DomainName,
@@ -760,6 +804,11 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 				}
 			}
 		}
+	}
+
+	// Now that we have successfully configured the s3 buckets, they can be added for saving.
+	for _, result := range results {
+		infra.AwsS3Buckets[result.BucketName] = result
 	}
 
 	log.Printf("\t%s\tS3 buckets configured successfully.\n", Success)
@@ -1005,7 +1054,7 @@ func (infra *Infrastructure) setupAwsEc2SecurityGroup(log *log.Logger, targetSg 
 
 	includeGroupNames := make(map[string]bool)
 	for _, r := range targetSg.IngressRules {
-		if r.SourceSecurityGroupName != nil {
+		if r.SourceSecurityGroupName != nil && *r.SourceSecurityGroupName != AwsSecurityGroupSourceGroupSelf {
 			includeGroupNames[*r.SourceSecurityGroupName] = true
 			filterNames = append(filterNames, *r.SourceSecurityGroupName)
 		}
@@ -1079,6 +1128,12 @@ func (infra *Infrastructure) setupAwsEc2SecurityGroup(log *log.Logger, targetSg 
 	// Add all the default ingress to the security group.
 	for _, ingressInput := range targetSg.IngressRules {
 		ingressInput.GroupId = aws.String(result.GroupId)
+
+		// Replace the placeholder to allow ingress to reference themselves.
+		if ingressInput.SourceSecurityGroupName != nil && *ingressInput.SourceSecurityGroupName == AwsSecurityGroupSourceGroupSelf {
+			ingressInput.SourceSecurityGroupName = aws.String(result.GroupName)
+		}
+
 		_, err = svc.AuthorizeSecurityGroupIngress(ingressInput)
 		if err != nil {
 			if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
@@ -1348,7 +1403,7 @@ func (infra *Infrastructure) SaveDbConnInfo(name string, dBConnInfo *DBConnInfo)
 
 	// Create the new entry in AWS Secret Manager with the database password.
 	sm := secretsmanager.New(infra.awsCredentials.Session())
-	
+
 	_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
 		SecretId:         aws.String(dbSecretId),
 		SecretBinary: dat,

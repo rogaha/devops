@@ -280,6 +280,17 @@ Access/Secret Keys are required
     --no-push                         disable pushing release image to remote repository
     ```
    
+* `deploy infrastructure` - Executes a deploy to setup the infrastructure for the deployment environment.
+      
+    ```bash
+    $ cicd -env [dev|stage|prod] deploy infrastructure [command options]
+    ``` 
+    
+    Options: 
+    ```bash
+    --dry-run                         print out the deploy details
+    ```    
+   
 * `deploy service` - Executes a deploy for a single service
       
     ```bash
@@ -324,6 +335,12 @@ Access/Secret Keys are required
     ```
 
 ### Examples
+
+
+Setup the infrastructure for _dev_
+```bash
+$ cicid --env=dev deploy infrastructure --dry-run=false
+```
 
 Build the example service _aws-ecs-go-web-api_ 
 ```bash

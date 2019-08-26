@@ -33,7 +33,7 @@ const (
 	// a good option for intermittent or unpredictable workloads.
 	EnableRdsServerless = true
 
-	// EnableElasticCache will include a Redis Elastic Cluster. 
+	// EnableElasticCache will include a Redis Elastic Cluster.
 	EnableElasticCache = true
 )
 
@@ -595,7 +595,8 @@ func DeployInfrastructureForTargetEnv(log *log.Logger, awsCredentials devdeploy.
 		return nil
 	}
 
-	_, err = devdeploy.SetupInfrastructure(log, cfg)
+
+	_, err = devdeploy.SetupInfrastructure(log, cfg, devdeploy.SetupOptionSkipCache)
 	if err != nil {
 		return err
 	}

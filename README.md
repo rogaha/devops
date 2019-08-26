@@ -449,7 +449,7 @@ VERSION:
 
 COMMANDS:
    build, b   build a service or function
-   deploy, d  deploy a service or function
+   deploy, d  deploy a service or function or infrastructure
    schema, s  manage the database schema
    help, h    Shows a list of commands or help for one command
 

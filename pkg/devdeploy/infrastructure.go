@@ -247,8 +247,9 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 	}
 
 	// Step 2: Find or create the AWS IAM policy.
+	var defaultPolicy *AwsIamPolicyResult
 	{
-		_, err := infra.setupAwsIamPolicy(log, cfg.AwsIamPolicy)
+		defaultPolicy, err = infra.setupAwsIamPolicy(log, cfg.AwsIamPolicy)
 		if err != nil {
 			return nil, err
 		}
@@ -280,6 +281,11 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 			CidrIp:     aws.String("0.0.0.0/0"),
 			FromPort:   aws.Int64(80),
 			ToPort:     aws.Int64(80),
+		})
+
+		// Enable services to communicate between each other.
+		cfg.AwsEc2SecurityGroup.IngressRules = append(cfg.AwsEc2SecurityGroup.IngressRules, &ec2.AuthorizeSecurityGroupIngressInput{
+			SourceSecurityGroupName: aws.String(AwsSecurityGroupSourceGroupSelf),
 		})
 
 		// When a database cluster/instance is defined, deploy needs access to handle executing schema migration.
@@ -400,6 +406,10 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 
 		//  Find or create the AWS ECS Task role if set.
 		if targetSrvc.AwsEcsTaskRole != nil {
+			if defaultPolicy != nil {
+				targetSrvc.AwsEcsTaskRole.AttachRolePolicyArns = append(targetSrvc.AwsEcsTaskRole.AttachRolePolicyArns, defaultPolicy.Arn)
+			}
+
 			_, err = infra.setupAwsIamRole(log, targetSrvc.AwsEcsTaskRole)
 			if err != nil {
 				return nil, err
