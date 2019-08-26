@@ -15,13 +15,11 @@ type Function = string
 
 var (
 	FunctionDatadogLogcollector = "datadog-logcollector"
-	//FunctionGoWebApi            = "aws-ecs-go-web-api"
 )
 
 // List of function names used by main.go for help and append the functions to config.
 var FunctionNames = []Function{
 	FunctionDatadogLogcollector,
-	//FunctionGoWebApi,
 }
 
 // NewFunction returns the *devdeploy.ProjectFunction.
@@ -176,30 +174,6 @@ func NewFunction(funcName string, cfg *devdeploy.Config) (*devdeploy.ProjectFunc
 				},
 			},
 		}
-
-	//case FunctionGoWebApi:
-	//	// AwsLambdaFunction defines the details needed to create an lambda function.
-	//	ctx.AwsLambdaFunction = &devdeploy.AwsLambdaFunction{
-	//		FunctionName: ctx.Name,
-	//		Description:  "GO Web API with API Gateway",
-	//
-	//		Handler:     "lambda_function.lambda_handler",
-	//		Runtime:     "python2.7",
-	//		MemorySize:  128,
-	//		Timeout:     aws.Int64(30),
-	//		Environment: map[string]string{},
-	//		Tags: []devdeploy.Tag{
-	//			{Key: devdeploy.AwsTagNameProject, Value: cfg.ProjectName},
-	//			{Key: devdeploy.AwsTagNameEnv, Value: cfg.Env},
-	//		},
-	//	}
-	//
-	//	ctx.DockerBuildTargetLayer = "lambda"
-	//
-	//	// This service is being built as a function.
-	//	ctx.DockerBuildArgs = map[string]string{
-	//		"service": ctx.Name,
-	//	}
 
 	default:
 		return nil, errors.Wrapf(devdeploy.ErrInvalidFunction,

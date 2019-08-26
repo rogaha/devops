@@ -66,17 +66,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.build=${commit_ref}" -a 
 
 
 
-# LAYER: Lambda: Support deploying this service to AWS Lambda with an API gateway.
-FROM lambci/lambda:go1.x AS lambda
-
-COPY --from=builder /gosrv /var/task/gosrv
-COPY --from=dev /static /var/task/static
-COPY --from=dev /templates /var/task/templates
-
-WORKDIR /var/task
-
-
-
 # FINAL LAYER - Entrypoint for the docker container image.
 FROM alpine:3.9
 
