@@ -808,7 +808,12 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					InputHash:          inputHash,
 				}
 
-				infra.AwsS3Buckets[bucketName].CloudFront = cloudfrontResult
+				for _, result := range results {
+					if result.BucketName == s3Bucket.BucketName {
+						result.CloudFront = cloudfrontResult
+						break
+					}
+				}
 			}
 		}
 	}
