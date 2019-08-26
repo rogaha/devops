@@ -62,7 +62,7 @@ func main() {
 			HostNames   []string `envconfig:"HOST_NAMES" example:"alternative-subdomain.example.saasstartupkit.com"`
 			Host        string   `default:"0.0.0.0:4000" envconfig:"HOST"`
 			EnableHTTPS bool     `default:"false" envconfig:"ENABLE_HTTPS"`
-			HostHTTPS   string   `default:"" envconfig:"HOST_HTTPS"`
+			HTTPSHost   string   `default:"" envconfig:"HTTPS_HOST"`
 			StaticFiles struct {
 				Dir               string `default:"./static" envconfig:"STATIC_DIR"`
 				S3Enabled         bool   `envconfig:"S3_ENABLED"`
@@ -317,7 +317,7 @@ func main() {
 	}()
 
 	// Start the HTTPS service listening for requests with an SSL Cert auto generated with Let's Encrypt.
-	if cfg.Service.HostHTTPS != "" {
+	if cfg.Service.HTTPSHost != "" {
 
 		// Determine the primary host by parsing host from the base app URL.
 		baseSiteUrl, err := url.Parse(cfg.Service.BaseUrl)
@@ -367,10 +367,10 @@ func main() {
 		tLSConfig.NextProtos = append(tLSConfig.NextProtos, "h2")
 
 		go func() {
-			log.Printf("main : API Listening %s with SSL cert for hosts %s", cfg.Service.HostHTTPS, strings.Join(hosts, ", "))
+			log.Printf("main : API Listening %s with SSL cert for hosts %s", cfg.Service.HTTPSHost, strings.Join(hosts, ", "))
 
 			srv := &http.Server{
-				Addr:         cfg.Service.HostHTTPS,
+				Addr:         cfg.Service.HTTPSHost,
 				Handler:      http.DefaultServeMux,
 				TLSConfig:    tLSConfig,
 				TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),

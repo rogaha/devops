@@ -20,8 +20,8 @@ RUN go get github.com/pilu/fresh
 # LAYER: DEV - All the project go files.
 FROM build_base_golang AS dev
 
-ARG service
-ARG service_path=./examples/${service}
+ARG name
+ARG code_path=./examples/${name}
 ARG commit_ref=-
 
 # Copy shared packages.
@@ -29,17 +29,17 @@ COPY internal ./internal
 COPY pkg ./pkg
 
 # Copy cmd specific packages.
-COPY ${service_path} ${service_path}
+COPY ${code_path} ${code_path}
 
 # Copy the global templates.
 ADD configs/fresh-auto-reload.conf /runner.conf
 
-WORKDIR ${service_path}
+WORKDIR ${code_path}
 
-ADD ${service_path}/static /static
+ADD ${code_path}/static /static
 ENV STATIC_DIR=/static
 
-ADD ${service_path}/templates /templates
+ADD ${code_path}/templates /templates
 ENV TEMPLATE_DIR=/templates
 
 ENTRYPOINT ["fresh", "-c", "/runner.conf"]
@@ -84,8 +84,8 @@ ENV STATIC_DIR=/static
 COPY --from=dev /templates /templates
 ENV TEMPLATE_DIR=/templates
 
-ARG service
-ENV SERVICE_NAME $service
+ARG name
+ENV SERVICE_NAME $name
 
 ARG env="dev"
 ENV ENV $env

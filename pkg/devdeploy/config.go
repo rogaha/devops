@@ -66,10 +66,38 @@ type Config struct {
 	ProjectFunctions []*ProjectFunction
 }
 
+// SecretID returns the secret name with a standard prefix.
+func (cfg *Config) SecretID(secretName string) string {
+	return AwsSecretID(cfg.ProjectName, cfg.Env, secretName)
+}
+
 // ProjectNameCamel takes a project name and returns the camel cased version.
-func (buildEnv *Config) ProjectNameCamel() string {
-	s := strings.Replace(buildEnv.ProjectName, "_", " ", -1)
+func (cfg *Config) ProjectNameCamel() string {
+	s := strings.Replace(cfg.ProjectName, "_", " ", -1)
 	s = strings.Replace(s, "-", " ", -1)
 	s = strcase.ToCamel(s)
 	return s
+}
+
+// GetDBConnInfo returns DBConnInfo for any dynamically created database else defined to the defined value.
+func (cfg *Config) GetDBConnInfo(infra *Infrastructure) (*DBConnInfo, error) {
+	var (
+		dbConnInfo *DBConnInfo
+		err error
+	)
+	if cfg.AwsRdsDBCluster != nil {
+		dbConnInfo, err = infra.GetDBConnInfo(cfg.AwsRdsDBCluster.DBClusterIdentifier)
+		if err != nil {
+			return nil, err
+		}
+	} else if cfg.AwsRdsDBInstance != nil {
+		dbConnInfo, err = infra.GetDBConnInfo(cfg.AwsRdsDBInstance.DBInstanceIdentifier)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		dbConnInfo = cfg.DBConnInfo
+	}
+
+	return dbConnInfo, nil
 }

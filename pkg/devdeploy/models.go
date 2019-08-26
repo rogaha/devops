@@ -19,7 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/servicediscovery"
 	"github.com/jmoiron/sqlx"
-	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -75,10 +74,11 @@ func (db DBConnInfo) URL() string {
 // ProjectFunction configures a function for build and deploy.
 type ProjectFunction struct {
 	// Required flags.
-	FuncName       string `validate:"required" example:"web-api"`
+	Name       string `validate:"required" example:"web-api"`
 	Dockerfile     string `validate:"required" example:"./cmd/web-api/Dockerfile"`
 	DockerBuildDir string `validate:"required"`
 	ReleaseTag     string `validate:"required"`
+	CodeDir      string `validate:"required"`
 	CodeS3Key      string `validate:"required"`
 	CodeS3Bucket   string `validate:"required"`
 
@@ -101,10 +101,11 @@ type ProjectFunction struct {
 // ProjectService configures a service for build and deploy.
 type ProjectService struct {
 	// Required flags.
-	ServiceName    string `validate:"required" example:"web-api"`
+	Name    string `validate:"required" example:"web-api"`
 	Dockerfile     string `validate:"required" example:"./cmd/web-api/Dockerfile"`
 	DockerBuildDir string `validate:"required"`
 	ReleaseTag     string `validate:"required"`
+	CodeDir      string `validate:"required"`
 
 	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
@@ -888,11 +889,6 @@ func (m *AwsRdsDBCluster) Input(securityGroup *AwsEc2SecurityGroupResult) (*rds.
 		input.VpcSecurityGroupIds = aws.StringSlice([]string{securityGroup.GroupId})
 	}
 
-	// The the password to a random value, it can be manually overwritten with the PreCreate method.
-	if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
-		input.MasterUserPassword = aws.String(uuid.NewRandom().String())
-	}
-
 	for _, t := range m.Tags {
 		input.Tags = append(input.Tags, &rds.Tag{
 			Key:   aws.String(t.Key),
@@ -1152,11 +1148,6 @@ func (m *AwsRdsDBInstance) Input(securityGroup *AwsEc2SecurityGroupResult) (*rds
 
 	if securityGroup != nil {
 		input.VpcSecurityGroupIds = aws.StringSlice([]string{securityGroup.GroupId})
-	}
-
-	// The the password to a random value, it can be manually overwritten with the PreCreate method.
-	if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
-		input.MasterUserPassword = aws.String(uuid.NewRandom().String())
 	}
 
 	for _, t := range m.Tags {
@@ -2557,7 +2548,7 @@ func (m *AwsLambdaFunction) UpdateCodeInput(codeS3Bucket, codeS3Key string) (*la
 }
 
 // UpdateConfigurationInput returns the AWS input for lambda.UpdateFunctionConfigurationInput.
-func (m *AwsLambdaFunction) UpdateConfigurationInput(subnetIds, securityGroupIds []string, enableVPC bool) (*lambda.UpdateFunctionConfigurationInput, error) {
+func (m *AwsLambdaFunction) UpdateConfigurationInput(vpc *AwsEc2VpcResult, securityGroup *AwsEc2SecurityGroupResult) (*lambda.UpdateFunctionConfigurationInput, error) {
 
 	input := &lambda.UpdateFunctionConfigurationInput{
 		FunctionName: aws.String(m.FunctionName),
@@ -2587,10 +2578,15 @@ func (m *AwsLambdaFunction) UpdateConfigurationInput(subnetIds, securityGroupIds
 		}
 	}
 
-	if enableVPC {
+	if vpc != nil {
 		input.VpcConfig = &lambda.VpcConfig{
-			SubnetIds:        aws.StringSlice(subnetIds),
-			SecurityGroupIds: aws.StringSlice(securityGroupIds),
+			SubnetIds:        aws.StringSlice(vpc.SubnetIds),
+		}
+
+		if securityGroup != nil {
+			input.VpcConfig.SecurityGroupIds = aws.StringSlice([]string{
+				securityGroup.GroupId,
+			})
 		}
 	}
 

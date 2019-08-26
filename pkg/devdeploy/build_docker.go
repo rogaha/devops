@@ -20,7 +20,7 @@ import (
 type BuildDockerRequest struct {
 	Env         string `validate:"oneof=dev stage prod" example:"dev"`
 	ProjectName string ` validate:"omitempty" example:"example-project"`
-	ServiceName string `validate:"required" example:"web-api"`
+	Name string `validate:"required" example:"web-api"`
 
 	ReleaseImage string `validate:"required" example:""`
 
@@ -153,7 +153,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 			buildBaseImage = os.Getenv("CI_REGISTRY_IMAGE") + ":" + buildBaseImageTag
 			pushTargetImg = true
 		} else {
-			buildBaseImage = req.ProjectName + ":" + req.Env + "-" + req.ServiceName + "-" + buildBaseImageTag
+			buildBaseImage = req.ProjectName + ":" + req.Env + "-" + req.Name + "-" + buildBaseImageTag
 		}
 
 		cmds = append(cmds, []string{"docker", "pull", buildBaseImage})
@@ -176,7 +176,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 	buildCmd := []string{
 		"docker", "build",
 		"--file=" + dockerFile,
-		"--build-arg", "service=" + req.ServiceName,
+		"--build-arg", "name=" + req.Name,
 		"--build-arg", "env=" + req.Env,
 	}
 

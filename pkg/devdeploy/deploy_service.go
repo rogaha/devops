@@ -35,7 +35,7 @@ import (
 // 11. Wait for AWS ECS service to enter a stable state.
 func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *ProjectService) error {
 
-	log.Printf("Deploy service %s to environment %s\n", targetService.ServiceName, cfg.Env)
+	log.Printf("Deploy service %s to environment %s\n", targetService.Name, cfg.Env)
 
 	infra, err := NewInfrastructure(cfg)
 	if err != nil {
@@ -144,7 +144,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			// List of placeholders that can be used in task definition and replaced on deployment.
 			placeholders := map[string]string{
-				"{SERVICE}":               targetService.ServiceName,
+				"{SERVICE}":               targetService.Name,
 				"{RELEASE_IMAGE}":         targetService.ReleaseImage,
 				"{AWS_DEFAULT_REGION}":    cfg.AwsCredentials.Region,
 				"{AWS_LOGS_GROUP}":        targetService.AwsCloudWatchLogGroup.LogGroupName,
@@ -379,11 +379,11 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 		// If a task definition value is empty, populate it with the default value.
 		if taskDefInput.Family == nil || *taskDefInput.Family == "" {
-			taskDefInput.Family = aws.String(targetService.ServiceName)
+			taskDefInput.Family = aws.String(targetService.Name)
 		}
 		if len(taskDefInput.ContainerDefinitions) > 0 {
 			if taskDefInput.ContainerDefinitions[0].Name == nil || *taskDefInput.ContainerDefinitions[0].Name == "" {
-				taskDefInput.ContainerDefinitions[0].Name = aws.String(targetService.ServiceName)
+				taskDefInput.ContainerDefinitions[0].Name = aws.String(targetService.Name)
 			}
 			if taskDefInput.ContainerDefinitions[0].Image == nil || *taskDefInput.ContainerDefinitions[0].Image == "" {
 				taskDefInput.ContainerDefinitions[0].Image = aws.String(targetService.ReleaseImage)

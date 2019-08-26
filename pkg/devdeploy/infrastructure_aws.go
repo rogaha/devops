@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pborman/uuid"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -47,7 +48,7 @@ func (infra *Infrastructure) AwsSession() *session.Session {
 
 // SecretID returns the secret name with a standard prefix.
 func (infra *Infrastructure) SecretID(secretName string) string {
-	return filepath.Join(infra.ProjectName, infra.Env, secretName)
+	return AwsSecretID(infra.ProjectName, infra.Env, secretName)
 }
 
 // Ec2TagResource is a helper function to tag EC2 resources.
@@ -182,7 +183,7 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 
 	result, ok := infra.AwsIamPolicy[targetPolicy.PolicyName]
 	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-		log.Printf("\tExists: %s", result.Arn)
+		log.Printf("\t\tExists: %s", result.Arn)
 		return result, nil
 	}
 
@@ -341,7 +342,7 @@ func (infra *Infrastructure) setupAwsIamRole(log *log.Logger, targetRole *AwsIam
 
 	result, ok := infra.AwsIamRole[targetRole.RoleName]
 	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-		log.Printf("\tExists: %s", result.Arn)
+		log.Printf("\t\tExists: %s", result.Arn)
 		return result, nil
 	}
 
@@ -455,7 +456,7 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 		result, ok := infra.AwsS3Buckets[bucketName]
 		if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-			log.Printf("\tExists: %s", result.BucketName)
+			log.Printf("\t\tExists: %s", result.BucketName)
 		} else {
 			_, err := svc.HeadBucket(&s3.HeadBucketInput{
 				Bucket: aws.String(bucketName),
@@ -801,155 +802,151 @@ func (infra *Infrastructure) setupAwsEc2Vpc(log *log.Logger, targetVpc *AwsEc2Vp
 	vpcResult, ok := infra.AwsEc2Vpc[resultKey]
 	if ok && vpcResult != nil {
 		if vpcResult.InputHash == vpcInputHash && !infra.skipCache {
-			log.Printf("\tExists: %s", resultKey)
-		} else {
-			vpcResult = nil
+			log.Printf("\t\tExists: %s", resultKey)
+			return vpcResult, nil
 		}
 	}
 
-	if vpcResult == nil {
+	svc := ec2.New(infra.awsCredentials.Session())
 
-		svc := ec2.New(infra.awsCredentials.Session())
+	var vpcId string
+	var subnets []*ec2.Subnet
+	if targetVpc.IsDefault {
+		log.Println("\t\tFind all subnets are that default for each availability zone in the zone")
 
-		var vpcId string
-		var subnets []*ec2.Subnet
-		if targetVpc.IsDefault {
-			log.Println("\t\tFind all subnets are that default for each availability zone in the zone")
+		// Find all subnets that are default for each availability zone.
+		err := svc.DescribeSubnetsPages(&ec2.DescribeSubnetsInput{}, func(res *ec2.DescribeSubnetsOutput, lastPage bool) bool {
+			for _, s := range res.Subnets {
+				if *s.DefaultForAz {
+					subnets = append(subnets, s)
+				}
+			}
+			return !lastPage
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to find default subnets")
+		}
+
+		// Iterate through subnets and make sure they belong to the same VPC as the project.
+		for _, s := range subnets {
+			if s.VpcId == nil {
+				continue
+			}
+			if vpcId == "" {
+				vpcId = *s.VpcId
+
+				log.Printf("\t\tFound VPC: %s", vpcId)
+
+			} else if vpcId != *s.VpcId {
+				return nil, errors.Errorf("Invalid subnet %s, all subnets should belong to the same VPC, expected %s, got %s", *s.SubnetId, vpcId, *s.VpcId)
+			}
+		}
+	} else {
+
+		var vpc *ec2.Vpc
+		if targetVpc.VpcId != "" {
+			log.Printf("\t\tFind VPC '%s'\n", targetVpc.VpcId)
+
+			// Find all subnets that are default for each availability zone.
+			err := svc.DescribeVpcsPages(&ec2.DescribeVpcsInput{
+				VpcIds: aws.StringSlice([]string{targetVpc.VpcId}),
+			}, func(res *ec2.DescribeVpcsOutput, lastPage bool) bool {
+				for _, s := range res.Vpcs {
+					if *s.VpcId == targetVpc.VpcId {
+						vpc = s
+						break
+					}
+				}
+				return !lastPage
+			})
+			if err != nil {
+				return nil, errors.Wrapf(err, "Failed to describe vpc '%s'.", targetVpc.VpcId)
+			}
+		}
+
+		// If there is no VPC id set and IsDefault is false, a new VPC needs to be created with the given details.
+		if vpc == nil {
+			createRes, err := svc.CreateVpc(vpcInput)
+			if err != nil {
+				return nil, errors.Wrap(err, "Failed to create VPC")
+			}
+			vpc = createRes.Vpc
+			targetVpc.VpcId = *vpc.VpcId
+
+			log.Printf("\t\tCreated VPC %s", *vpc.VpcId)
+
+			err = infra.Ec2TagResource(*vpc.VpcId, "", targetVpc.Tags...)
+			if err != nil {
+				return nil, errors.Wrapf(err, "Failed to tag vpc '%s'.", targetVpc.VpcId)
+			}
+		} else {
+			log.Println("\t\tFind all subnets for VPC.")
 
 			// Find all subnets that are default for each availability zone.
 			err := svc.DescribeSubnetsPages(&ec2.DescribeSubnetsInput{}, func(res *ec2.DescribeSubnetsOutput, lastPage bool) bool {
 				for _, s := range res.Subnets {
-					if *s.DefaultForAz {
+					if *s.VpcId == *vpc.VpcId {
 						subnets = append(subnets, s)
 					}
 				}
 				return !lastPage
 			})
 			if err != nil {
-				return nil, errors.Wrap(err, "Failed to find default subnets")
+				return nil, errors.Wrapf(err, "Failed to find subnets for VPC '%s'", targetVpc.VpcId)
 			}
+		}
+		vpcId = *vpc.VpcId
 
-			// Iterate through subnets and make sure they belong to the same VPC as the project.
-			for _, s := range subnets {
-				if s.VpcId == nil {
-					continue
-				}
-				if vpcId == "" {
-					vpcId = *s.VpcId
-
-					log.Printf("\t\tFound VPC: %s", vpcId)
-
-				} else if targetVpc.VpcId != *s.VpcId {
-					return nil, errors.Errorf("Invalid subnet %s, all subnets should belong to the same VPC, expected %s, got %s", *s.SubnetId, vpcId, *s.VpcId)
+		for _, sn := range targetVpc.Subnets {
+			var found bool
+			for _, t := range subnets {
+				if t.CidrBlock != nil && *t.CidrBlock == sn.CidrBlock {
+					found = true
+					break
 				}
 			}
-		} else {
 
-			var vpc *ec2.Vpc
-			if targetVpc.VpcId != "" {
-				log.Printf("\t\tFind VPC '%s'\n", targetVpc.VpcId)
-
-				// Find all subnets that are default for each availability zone.
-				err := svc.DescribeVpcsPages(&ec2.DescribeVpcsInput{
-					VpcIds: aws.StringSlice([]string{targetVpc.VpcId}),
-				}, func(res *ec2.DescribeVpcsOutput, lastPage bool) bool {
-					for _, s := range res.Vpcs {
-						if *s.VpcId == targetVpc.VpcId {
-							vpc = s
-							break
-						}
-					}
-					return !lastPage
-				})
+			if !found {
+				input, err := sn.Input(targetVpc.VpcId)
 				if err != nil {
-					return nil, errors.Wrapf(err, "Failed to describe vpc '%s'.", targetVpc.VpcId)
+					return nil, err
 				}
-			}
 
-			// If there is no VPC id set and IsDefault is false, a new VPC needs to be created with the given details.
-			if vpc == nil {
-				createRes, err := svc.CreateVpc(vpcInput)
+				createRes, err := svc.CreateSubnet(input)
 				if err != nil {
 					return nil, errors.Wrap(err, "Failed to create VPC")
 				}
-				vpc = createRes.Vpc
-				targetVpc.VpcId = *vpc.VpcId
+				subnets = append(subnets, createRes.Subnet)
 
-				log.Printf("\t\tCreated VPC %s", *vpc.VpcId)
+				log.Printf("\t\tCreated Subnet %s", *createRes.Subnet.SubnetId)
 
-				err = infra.Ec2TagResource(*vpc.VpcId, "", targetVpc.Tags...)
+				err = infra.Ec2TagResource(*createRes.Subnet.SubnetId, "", sn.Tags...)
 				if err != nil {
-					return nil, errors.Wrapf(err, "Failed to tag vpc '%s'.", targetVpc.VpcId)
-				}
-			} else {
-				log.Println("\t\tFind all subnets for VPC.")
-
-				// Find all subnets that are default for each availability zone.
-				err := svc.DescribeSubnetsPages(&ec2.DescribeSubnetsInput{}, func(res *ec2.DescribeSubnetsOutput, lastPage bool) bool {
-					for _, s := range res.Subnets {
-						if *s.VpcId == *vpc.VpcId {
-							subnets = append(subnets, s)
-						}
-					}
-					return !lastPage
-				})
-				if err != nil {
-					return nil, errors.Wrapf(err, "Failed to find subnets for VPC '%s'", targetVpc.VpcId)
-				}
-			}
-			vpcId = *vpc.VpcId
-
-			for _, sn := range targetVpc.Subnets {
-				var found bool
-				for _, t := range subnets {
-					if t.CidrBlock != nil && *t.CidrBlock == sn.CidrBlock {
-						found = true
-						break
-					}
-				}
-
-				if !found {
-					input, err := sn.Input(targetVpc.VpcId)
-					if err != nil {
-						return nil, err
-					}
-
-					createRes, err := svc.CreateSubnet(input)
-					if err != nil {
-						return nil, errors.Wrap(err, "Failed to create VPC")
-					}
-					subnets = append(subnets, createRes.Subnet)
-
-					log.Printf("\t\tCreated Subnet %s", *createRes.Subnet.SubnetId)
-
-					err = infra.Ec2TagResource(*createRes.Subnet.SubnetId, "", sn.Tags...)
-					if err != nil {
-						return nil, errors.Wrapf(err, "Failed to tag subnet '%s'.", *createRes.Subnet.SubnetId)
-					}
+					return nil, errors.Wrapf(err, "Failed to tag subnet '%s'.", *createRes.Subnet.SubnetId)
 				}
 			}
 		}
-
-		// This deployment process requires at least one subnet.
-		// Each AWS account gets a default VPC and default subnet for each availability zone.
-		// Likely error with AWs is can not find at least one.
-		if len(subnets) == 0 {
-			return nil, errors.New("Failed to find any subnets, expected at least 1")
-		}
-
-		var subnetIds []string
-		for _, s := range subnets {
-			subnetIds = append(subnetIds, *s.SubnetId)
-		}
-
-		vpcResult = &AwsEc2VpcResult{
-			VpcId:     vpcId,
-			IsDefault: targetVpc.IsDefault,
-			SubnetIds: subnetIds,
-			InputHash: vpcInputHash,
-		}
-		infra.AwsEc2Vpc[resultKey] = vpcResult
 	}
+
+	// This deployment process requires at least one subnet.
+	// Each AWS account gets a default VPC and default subnet for each availability zone.
+	// Likely error with AWs is can not find at least one.
+	if len(subnets) == 0 {
+		return nil, errors.New("Failed to find any subnets, expected at least 1")
+	}
+
+	var subnetIds []string
+	for _, s := range subnets {
+		subnetIds = append(subnetIds, *s.SubnetId)
+	}
+
+	vpcResult = &AwsEc2VpcResult{
+		VpcId:     vpcId,
+		IsDefault: targetVpc.IsDefault,
+		SubnetIds: subnetIds,
+		InputHash: vpcInputHash,
+	}
+	infra.AwsEc2Vpc[resultKey] = vpcResult
 
 	log.Printf("\t\tVPC '%s' has %d subnets", vpcResult.VpcId, len(vpcResult.SubnetIds))
 	for _, sn := range vpcResult.SubnetIds {
@@ -987,7 +984,7 @@ func (infra *Infrastructure) setupAwsEc2SecurityGroup(log *log.Logger, targetSg 
 
 	result, ok := infra.AwsEc2SecurityGroup[targetSg.GroupName]
 	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-		log.Printf("\tExists: %s", result.GroupId)
+		log.Printf("\t\tExists: %s", result.GroupId)
 		return result, nil
 	}
 
@@ -1052,6 +1049,7 @@ func (infra *Infrastructure) setupAwsEc2SecurityGroup(log *log.Logger, targetSg 
 			GroupId:   *createRes.GroupId,
 			GroupName: *input.GroupName,
 			VpcId:     input.VpcId,
+			InputHash: inputHash,
 		}
 
 		log.Printf("\t\tCreated: %s", securityGroupName)
@@ -1067,6 +1065,7 @@ func (infra *Infrastructure) setupAwsEc2SecurityGroup(log *log.Logger, targetSg 
 			GroupId:   *securityGroup.GroupId,
 			GroupName: *securityGroup.GroupName,
 			VpcId:     input.VpcId,
+			InputHash: inputHash,
 		}
 	}
 
@@ -1114,7 +1113,7 @@ func (infra *Infrastructure) setupAwsElasticCacheCluster(log *log.Logger, target
 
 	result, ok := infra.AwsElasticCacheCluster[targetCluster.CacheClusterId]
 	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-		log.Printf("\tExists: %s", result.CacheClusterId)
+		log.Printf("\t\tExists: %s", result.CacheClusterId)
 		return result, nil
 	}
 
@@ -1373,7 +1372,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 
 	result, ok := infra.AwsRdsDBCluster[targetCluster.DBClusterIdentifier]
 	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-		log.Printf("\tExists: %s", result.DBClusterArn)
+		log.Printf("\t\tExists: %s", result.DBClusterArn)
 		return result, nil
 	}
 
@@ -1402,8 +1401,13 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 	var created bool
 	if dbCluster == nil {
 		if connInfo != nil && connInfo.Pass != "" {
-			targetCluster.MasterUsername = connInfo.User
-			targetCluster.MasterUserPassword = connInfo.Pass
+			input.MasterUsername = aws.String(connInfo.User)
+			input.MasterUserPassword = aws.String(connInfo.Pass)
+		}
+
+		// The the password to a random value, it can be manually overwritten with the PreCreate method.
+		if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
+			input.MasterUserPassword = aws.String(uuid.NewRandom().String())
 		}
 
 		// Store the secret first in the event that create fails.
@@ -1411,6 +1415,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 			// Only set the password right now,
 			// all other configuration details will be set after the database instance is created.
 			connInfo = &DBConnInfo{
+				User: *input.MasterUsername,
 				Pass: *input.MasterUserPassword,
 			}
 
@@ -1432,7 +1437,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 
 		log.Printf("\t\tCreated: %s", *dbCluster.DBClusterArn)
 	} else {
-		log.Printf("\t\tFound: %s", dbCluster.DBClusterArn)
+		log.Printf("\t\tFound: %s", *dbCluster.DBClusterArn)
 	}
 
 	// The status of the cluster.
@@ -1475,7 +1480,6 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 
 		// Copy the cluster details to the DB struct.
 		connInfo.Host = curHost
-		connInfo.User = *dbCluster.MasterUsername
 		connInfo.Database = *dbCluster.DatabaseName
 		connInfo.Driver = *dbCluster.Engine
 		connInfo.DisableTLS = false
@@ -1559,7 +1563,7 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 
 	result, ok := infra.AwsRdsDBInstance[targetInstance.DBInstanceIdentifier]
 	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
-		log.Printf("\tExists: %s", result.DBInstanceArn)
+		log.Printf("\t\tExists: %s", result.DBInstanceArn)
 		return result, nil
 	}
 
@@ -1589,10 +1593,14 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 	// No DB instance was found, so create a new one.
 	var created bool
 	if dbInstance == nil {
-
 		if connInfo != nil && connInfo.Pass != "" {
-			targetInstance.MasterUsername = connInfo.User
-			targetInstance.MasterUserPassword = connInfo.Pass
+			input.MasterUsername = aws.String(connInfo.User)
+			input.MasterUserPassword = aws.String(connInfo.Pass)
+		}
+
+		// The the password to a random value, it can be manually overwritten with the PreCreate method.
+		if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
+			input.MasterUserPassword = aws.String(uuid.NewRandom().String())
 		}
 
 		//if targetInstance.AwsRdsDBCluster != nil {
@@ -1603,6 +1611,7 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 		// Store the secret first in the event that create fails.
 		if connInfo == nil {
 			connInfo = &DBConnInfo{
+				User: *input.MasterUsername,
 				Pass: *input.MasterUserPassword,
 			}
 
@@ -1659,7 +1668,6 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 
 		// Copy the instance details to the DB struct.
 		connInfo.Host = curHost
-		connInfo.User = *dbInstance.MasterUsername
 		connInfo.Database = *dbInstance.DBName
 		connInfo.Driver = *dbInstance.Engine
 		connInfo.DisableTLS = false
@@ -2022,6 +2030,9 @@ func (infra *Infrastructure) setupAwsEcsService(log *log.Logger, cluster *AwsEcs
 		InputHash:      inputHash,
 	}
 
+	if cluster.Services == nil {
+		cluster.Services = make(map[string]*AwsEcsServiceResult)
+	}
 	cluster.Services[ecsServiceName] = result
 
 	return result, nil
@@ -2901,7 +2912,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 	log.Println("\t\tConfigure Target Groups")
 	for _, tg := range definedElb.TargetGroups {
 
-		groupInput, err := tg.Input(vpc.VpcId)
+		groupInput, err := tg.Input(vpc)
 		if err != nil {
 			return nil, err
 		}

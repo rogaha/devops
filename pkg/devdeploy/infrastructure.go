@@ -142,7 +142,7 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 }
 
 // Save json encodes Infrastructure and updates the secret in AWS Secrets Manager.
-func (i *Infrastructure) Save() error {
+func (i *Infrastructure) Save(log *log.Logger) error {
 
 	dat, err := json.Marshal(i)
 	if err != nil {
@@ -157,8 +157,25 @@ func (i *Infrastructure) Save() error {
 		SecretBinary: dat,
 	})
 	if err != nil {
-		return errors.Wrap(err, "Failed to update secret with infrastructure")
+		aerr, ok := err.(awserr.Error)
+
+		if ok && aerr.Code() == secretsmanager.ErrCodeResourceNotFoundException {
+			log.Printf("\tCreating new entry in AWS Secret Manager using secret ID %s\n", i.secretID)
+
+			_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
+				Name:     aws.String(i.secretID),
+				SecretBinary: dat,
+			})
+			if err != nil {
+				return errors.Wrap(err, "Failed to create secret with infrastructure")
+			}
+
+		} else {
+			return errors.Wrap(err, "Failed to update secret with infrastructure")
+		}
 	}
+
+	log.Printf("\tSaving Infrastructure to Aws Secret Manager using secret ID %s\n", i.secretID)
 
 	return nil
 }
@@ -185,7 +202,11 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 	}
 
 	// Always ensure we save any progress before exiting, even on error.
-	defer infra.Save()
+	defer func() {
+		if err := infra.Save(log); err != nil {
+			log.Fatalf("%+v", err)
+		}
+	} ()
 
 	var buildEnv bool
 	for _, opt := range opts {

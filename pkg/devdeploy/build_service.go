@@ -13,7 +13,7 @@ import (
 // BuildServiceForTargetEnv builds a service using the defined Dockerfile and pushes the release image to AWS ECR.
 func BuildServiceForTargetEnv(log *log.Logger, cfg *Config, targetService *ProjectService, noCache, noPush bool) error {
 
-	log.Printf("Build service %s for environment %s\n", targetService.ServiceName, cfg.Env)
+	log.Printf("Build service %s for environment %s\n", targetService.Name, cfg.Env)
 
 	if targetService.DockerBuildDir == "" {
 		targetService.DockerBuildDir = cfg.ProjectRoot
@@ -73,7 +73,7 @@ func BuildServiceForTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 	req := &BuildDockerRequest{
 		Env:         cfg.Env,
 		ProjectName: cfg.ProjectName,
-		ServiceName: targetService.ServiceName,
+		Name: targetService.Name,
 
 		ReleaseImage: releaseImage,
 

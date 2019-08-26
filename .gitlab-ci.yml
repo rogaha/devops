@@ -10,12 +10,15 @@ before_script:
   - 'go install ./build/cicd'
 
 stages:
+  - setup:dev
   - build:dev
   - migrate:dev
   - deploy:dev
+  - setup:stage
   - build:stage
   - migrate:stage
   - deploy:stage
+  - setup:prod
   - build:prod
   - migrate:prod
   - deploy:prod
@@ -30,6 +33,16 @@ cache:
   only:
     - master
 
+.setup_tmpl: &setup_tmpl
+  <<: *job_tmpl
+  script:
+    - 'cicd --env=${TARGET_ENV} infrastructure'
+
+.migrate_tmpl: &migrate_tmpl
+  <<: *job_tmpl
+  script:
+    - 'cicd --env=${TARGET_ENV} schema migrate'
+
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
   script:
@@ -40,10 +53,18 @@ cache:
   script:
     - 'cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
 
-.migrate_tmpl: &migrate_tmpl
-  <<: *job_tmpl
-  script:
-    - 'cicd --env=${TARGET_ENV} schema migrate'
+infra:setup:prod:
+  <<: *setup_tmpl
+  stage: setup:prod
+  tags:
+    - prod
+  only:
+    - master
+    - prod
+    - /^prod-.*$/
+  variables:
+    TARGET_ENV: 'prod'
+    AWS_USE_ROLE: 'true'
 
 db:migrate:prod:
   <<: *migrate_tmpl

@@ -13,7 +13,7 @@ import (
 // 3. Create or update the code/configuration.
 func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFunction) error {
 
-	log.Printf("Deploy function %s to environment %s\n", target.FuncName, cfg.Env)
+	log.Printf("Deploy function %s to environment %s\n", target.Name, cfg.Env)
 
 	infra, err := NewInfrastructure(cfg)
 	if err != nil {
@@ -55,8 +55,10 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 		}
 	}
 
-	securityGroupIds := []string{}
-	var vpc *AwsEc2VpcResult
+	var (
+		vpc *AwsEc2VpcResult
+		securityGroup *AwsEc2SecurityGroupResult
+	)
 	if target.EnableVPC {
 		if cfg.AwsEc2Vpc.IsDefault {
 			vpc, err = infra.GetAwsEc2DefaultVpc()
@@ -69,11 +71,10 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 			return err
 		}
 
-		sg, err := infra.GetAwsEc2SecurityGroup(cfg.AwsEc2SecurityGroup.GroupName)
+		securityGroup, err = infra.GetAwsEc2SecurityGroup(cfg.AwsEc2SecurityGroup.GroupName)
 		if err != nil {
 			return err
 		}
-		securityGroupIds = append(securityGroupIds, sg.GroupId)
 	}
 
 	// Step 3: Create or update the code/configuration.
@@ -91,7 +92,7 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 		lambdaFunc = codeRes
 		log.Printf("\t\tUpdated Code: %s", *lambdaFunc.FunctionArn)
 
-		configInput, err := target.AwsLambdaFunction.UpdateConfigurationInput(vpc.SubnetIds, securityGroupIds, target.EnableVPC)
+		configInput, err := target.AwsLambdaFunction.UpdateConfigurationInput(vpc, securityGroup)
 		if err != nil {
 			return err
 		}
@@ -104,7 +105,7 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 
 	} else {
 
-		input, err := target.AwsLambdaFunction.CreateInput(target.CodeS3Bucket, target.CodeS3Key, securityGroupIds, securityGroupIds, target.EnableVPC)
+		input, err := target.AwsLambdaFunction.CreateInput(target.CodeS3Bucket, target.CodeS3Key, vpc, securityGroup)
 		if err != nil {
 			return err
 		}
