@@ -7,7 +7,7 @@ RUN apk --no-cache add \
             git build-base gcc
 
 # Change dir to project base.
-WORKDIR $GOPATH/src/geeks-accelerator/oss/devops
+WORKDIR /project/build
 
 # Enable go modules.
 ENV GO111MODULE="on"
@@ -48,8 +48,10 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 # LAYER: TESTER - Run all the unittets for the project.
 FROM dev AS tester
 
+
+
 # Run the tests for the service being built.
-RUN go test -mod=vendor -v ./...
+RUN go test -mod=/project/build/vendor -v ./...
 
 
 
