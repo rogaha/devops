@@ -4,7 +4,7 @@ cicd
 
 _cicd_ is a simple command line tool that facilitates build and deployment for your project. The goal is to help enable 
 developers to easily setup a continuous build pipeline using [GitLab CI/CD](https://docs.gitlab.com/ee/ci/) and code 
-driven deployment. 
+driven deployment.  You can view the current pipeline [here](https://gitlab.com/geeks-accelerator/oss/devops/pipelines).
 
 <!-- toc -->
 
@@ -103,9 +103,9 @@ Services are deployed to [AWS Fargate](https://aws.amazon.com/fargate/) based on
  
 If the docker file is a multi-stage build and it contains a stage with the name `build_base_golang`, additional caching 
 will be implemented to reduce build times. The build command assumes for a stage named `build_base_golang` assumes that 
-the stage will run `go mod download` to pull down all package dependencies. The build command computes a checksum for the 
-project `go.sum` and then executes a docker build that targets the specific stage `build_base_golang`. The built container 
-image is tagged with the go.mod hash and pushed to the projects 
+the stage will run `go mod download` to pull down all package dependencies. The build command computes a checksum for 
+your project `go.sum` and then executes a docker build that targets the specific stage `build_base_golang`. The built 
+container image is tagged with the go.mod hash and pushed to the project's 
 [GitLab repository](https://docs.gitlab.com/ee/user/project/repository/). 
 
     When Go modules are enabled for the project, it includes a `go.sum` that provides checksums-trees for dependencies. 

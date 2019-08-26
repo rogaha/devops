@@ -89,7 +89,11 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 	}
 
 	// The current import path used for the tool that will need to be replaced.
-	curImportPath := "gitlab.com/geeks-accelerator/oss/devops/build/cicd"
+	curBasePath := "gitlab.com/geeks-accelerator/oss/devops"
+	curImportPath := filepath.Join(curBasePath, "/build/cicd")
+
+	// The link the schema directory in README.md to gitlab.
+	curSchemaRef := filepath.Join(curBasePath, "/tree/master/build/cicd/internal/schema")
 
 	// Load the go module details for the target project.
 	projectDetails, err := devdeploy.LoadModuleDetails(projectDir)
@@ -112,6 +116,8 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 	// List of values that will be replaced in the files being copied.
 	replacements := map[string]string{
 		curImportPath: newImportPath,
+		"your project": projectDetails.ProjectName,
+		"project's": projectDetails.ProjectName + "'s",
 	}
 
 	// List of path prefixes that should be not be copied to target project.
@@ -128,6 +134,9 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 
 		log.Printf("Using project schema '%s'\n", projectSchemaPath)
 
+		replacements[curSchemaRef] = filepath.Join(projectDetails.GoModName, "/tree/master/internal/schema")
+	} else {
+		replacements[curSchemaRef] = filepath.Join(projectDetails.GoModName, "/tree/master/build/cicd/internal/schema")
 	}
 
 	// The current copy of the build/cicd tool will be used as the template for deploying a copy of the tool to a project.

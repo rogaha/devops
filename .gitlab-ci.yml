@@ -24,6 +24,10 @@ stages:
 cache:
   key: ${CI_COMMIT_REF_SLUG}
 
+before_script:
+  - echo $GOPROXY
+  - echo $GO111MODULE
+
 # Everything should get this, whether through subtemplates or explicitly
 # embedded in a job.
 .job_tmpl: &job_tmpl
@@ -150,6 +154,23 @@ datadog-logcollector:deploy:prod:
     AWS_USE_ROLE: 'true'
   #when: manual
 
+
+# ================================================
+# Stages below are specific to devops project only.
+
+# Ensure the devops tool builds before a new release can be tagged.
+devops:build:prod:
+  <<: *job_tmpl
+  stage: build:prod
+  tags:
+    - prod
+  only:
+    - master
+    - prod
+  script:
+    - 'go build ./cmd/devops'
+
+# Tag a new release if the pipeline completes successfully.
 tag:release:prod:
   stage: release:prod
   script:

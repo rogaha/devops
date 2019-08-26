@@ -359,6 +359,7 @@ instance will be a dedicated host since we need it always up and running, thus i
     Update the `[runners.docker]` configuration section in `config.toml` to match the example below replacing the 
     obvious placeholder `XXXXX` with the relevant value. 
     ```yaml
+      environment = ["GOPROXY=https://goproxy.io"]
       [runners.docker]
         tls_verify = false
         image = "geeksaccelerator/docker-library:golang1.12-docker"
@@ -424,7 +425,42 @@ instance will be a dedicated host since we need it always up and running, thus i
     The _ServerAddress_ for S3 will need to be updated if the region is changed. For `us-east-1` the
          _ServerAddress_ is `s3.amazonaws.com`.  Read more here about [accessing a bucket](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro)
 
-16. Setup complete. You should now be able navigate back to the `CI / CD` under `Settings` for your GitLab repo and see 
+
+16. Optionally enable a locally hosted proxy for Go modules to speed up build times using [goproxy.io](https://goproxy.io/). 
+
+```bash
+sudo chkconfig docker on
+sudo service docker start
+sudo usermod -a -G docker $USER
+sudo docker run -d -p8081:8081 --restart always goproxy/goproxy 
+``` 
+
+Get the public DNS name for the instance. This will be used by runners to access `goproxy` running on the bastion.
+```bash
+echo $(curl -s http://169.254.169.254/latest/meta-data/public-hostname)":8081"
+```
+
+Open up `/etc/gitlab-runner/config.toml` in `vim` to edit the configuration file. In the `[[runners]]` section add the 
+following line after `executor`:
+```yaml
+  environment = ["GOPROXY=xxxx"]
+``` 
+
+Example after update:
+```yaml
+[[runners]]
+  name = "oss-devops-dev"
+  url = "https://gitlab.com/"
+  executor = "docker+machine"
+  environment = ["GOPROXY=ec2-52-36-105-172.us-west-2.compute.amazonaws.com:8081"]
+```
+
+Restart the gitlab runner: 
+```bash
+sudo gitlab-runner restart
+```
+
+17. Setup complete. You should now be able navigate back to the `CI / CD` under `Settings` for your GitLab repo and see 
 the newly deployed instance listed as an active runner. 
 
 ![GitLab Runner Activated](assets/readme-files/gitlab-cicd-settings-setup-manual-activated.png)
