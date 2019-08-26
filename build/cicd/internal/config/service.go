@@ -304,7 +304,7 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 
 		// Define the full task definition for the service.
 		taskDef := &ecs.RegisterTaskDefinitionInput{
-			Family:      aws.String(ctx.Name),
+			Family:      aws.String(fmt.Sprintf("%s-%s-%s", cfg.Env, ctx.AwsEcsCluster.ClusterName, ctx.Name)),
 			NetworkMode: aws.String("awsvpc"),
 			ContainerDefinitions: []*ecs.ContainerDefinition{
 				// Include the single container definition for the service. Additional definitions could be added
