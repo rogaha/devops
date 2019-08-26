@@ -364,7 +364,6 @@ func main() {
 		tLSConfig := &tls.Config{GetCertificate: m.GetCertificate}
 
 		tLSConfig.NextProtos = append(tLSConfig.NextProtos, acme.ALPNProto)
-		tLSConfig.NextProtos = append(tLSConfig.NextProtos, "h2")
 
 		go func() {
 			log.Printf("main : API Listening %s with SSL cert for hosts %s", cfg.Service.HTTPSHost, strings.Join(hosts, ", "))
