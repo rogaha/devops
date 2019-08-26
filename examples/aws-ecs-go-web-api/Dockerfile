@@ -27,6 +27,7 @@ ARG commit_ref=-
 # Copy shared packages.
 COPY internal ./internal
 COPY pkg ./pkg
+COPY vendor ./vendor
 
 # Copy cmd specific packages.
 COPY ${code_path} ${code_path}
