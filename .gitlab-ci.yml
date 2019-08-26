@@ -6,6 +6,12 @@ services:
 variables:
   DOCKER_TLS_CERTDIR: ""
 
+before_script:
+  - 'echo $GOPATH'
+  - 'echo $PWD'
+  - 'export GOPATH=$PWD/go'
+  - 'echo $GOPATH'
+
 stages:
   - setup:dev
   - build:dev
@@ -33,13 +39,12 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
-    - 'go mod vendor'
     - 'go build -o cicd ./build/cicd'
     - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
       - cicd
-      - vendor
+      - go
     expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
