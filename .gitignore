@@ -1,7 +1,8 @@
 .idea
-aws.lee
-aws.*
 .env_docker_compose
 .local.env
 .DS_Store
 tmp
+
+build/go-pkg/*
+!build/go-pkg/README.md 

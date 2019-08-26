@@ -20,7 +20,7 @@ import (
 type BuildDockerRequest struct {
 	Env         string `validate:"oneof=dev stage prod" example:"dev"`
 	ProjectName string ` validate:"omitempty" example:"example-project"`
-	ServiceName string `validate:"required" example:"web-api"`
+	Name        string `validate:"required" example:"web-api"`
 
 	ReleaseImage string `validate:"required" example:""`
 
@@ -114,26 +114,28 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 		if buildStageName != "" {
 			log.Printf("\t\tFound build stage %s for caching.\n", buildStageName)
 
-			// Generate a checksum for the lines associated with the build stage.
-			buildBaseHashPts := []string{
-				fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(stageLines, "\n")))),
-			}
-
+			var layerHash string
 			switch buildStageName {
 			case "build_base_golang":
-				goModHash, err := findGoModHashForBuild(req.BuildDir)
+				layerHash, err = findGoModHashForBuild(req.BuildDir)
 				if err != nil {
 					return err
 				}
-
-				buildBaseHashPts = append(buildBaseHashPts, goModHash)
 			}
 
-			// Combine all the checksums to be used to tag the target build stage.
-			buildBaseHash := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(buildBaseHashPts, "|"))))
+			if layerHash != "" {
+				// Generate a checksum for the lines associated with the build stage.
+				buildBaseHashPts := []string{
+					fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(stageLines, "\n")))),
+					layerHash,
+				}
 
-			// New stage image tag.
-			buildBaseImageTag = buildStageName + "-" + buildBaseHash[0:8]
+				// Combine all the checksums to be used to tag the target build stage.
+				buildBaseHash := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(buildBaseHashPts, "|"))))
+
+				// New stage image tag.
+				buildBaseImageTag = buildStageName + "-" + buildBaseHash[0:8]
+			}
 		}
 	}
 
@@ -153,7 +155,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 			buildBaseImage = os.Getenv("CI_REGISTRY_IMAGE") + ":" + buildBaseImageTag
 			pushTargetImg = true
 		} else {
-			buildBaseImage = req.ProjectName + ":" + req.Env + "-" + req.ServiceName + "-" + buildBaseImageTag
+			buildBaseImage = req.ProjectName + ":" + req.Env + "-" + req.Name + "-" + buildBaseImageTag
 		}
 
 		cmds = append(cmds, []string{"docker", "pull", buildBaseImage})
@@ -176,7 +178,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 	buildCmd := []string{
 		"docker", "build",
 		"--file=" + dockerFile,
-		"--build-arg", "service=" + req.ServiceName,
+		"--build-arg", "name=" + req.Name,
 		"--build-arg", "env=" + req.Env,
 	}
 

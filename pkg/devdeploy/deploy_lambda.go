@@ -7,68 +7,35 @@ import (
 	"github.com/pkg/errors"
 )
 
-// DeployLambda defines the detailed needed to deploy a function to AWS Lambda.
-type DeployLambda struct {
-	// Required flags.
-	FuncName     string `validate:"required" example:"web-api"`
-	CodeS3Key    string `validate:"required"`
-	CodeS3Bucket string `validate:"required"`
-
-	// Optional flags.
-	EnableVPC bool `validate:"omitempty"`
-
-	// AwsLambdaFunction defines the details for a lambda function.
-	AwsLambdaFunction *AwsLambdaFunction `validate:"required"`
-
-	// AwsIamRole defines the details for assigning the lambda function to use a custom role.
-	AwsIamRole *AwsIamRole `validate:"required"`
-
-	// AwsIamPolicy defines the details for created a custom policy for the lambda function.
-	AwsIamPolicy *AwsIamPolicy `validate:"required"`
-}
-
 // DeployLambdaToTargetEnv deploys a function to AWS Lambda The following steps will be executed for deployment:
-// 1. Find or create the AWS IAM policy if defined.
-// 2. Find or create the AWS IAM role if defined.
-// 3. Find the AWS function if it exists.
-// 4. Create or update the code/configuration.
-func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *DeployLambda) error {
+// 1. Find the AWS IAM role if defined.
+// 2. Find the AWS function if it exists.
+// 3. Create or update the code/configuration.
+func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFunction) error {
 
-	err := SetupDeploymentEnv(log, cfg)
+	log.Printf("Deploy function %s to environment %s\n", target.Name, cfg.Env)
+
+	infra, err := NewInfrastructure(cfg)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("Deploy function %s to environment %s\n", target.FuncName, cfg.Env)
+	// Step 1: Find or create the AWS IAM role.
+	if target.AwsIamRole != nil {
+		role, err := infra.GetAwsIamRole(target.AwsIamRole.RoleName)
+		if err != nil {
+			return err
+		}
+		target.AwsLambdaFunction.Role = role.Arn
 
-	lambdaSvc := lambda.New(cfg.AwsSession())
+		log.Printf("\t%s\tConfigured Lambda role.\n", Success)
+	}
+
+	lambdaSvc := lambda.New(infra.AwsSession())
 
 	funcName := target.AwsLambdaFunction.FunctionName
 
-	// Step 1: Find or create the AWS IAM policy.
-	var policyArns []string
-	if target.AwsIamPolicy != nil {
-		policy, err := SetupIamPolicy(log, cfg, target.AwsIamPolicy)
-		if err != nil {
-			return err
-		}
-		policyArns = append(policyArns, *policy.Arn)
-
-		log.Printf("\t%s\tConfigured Lambda policy.\n", Success)
-	}
-
-	// Step 2: Find or create the AWS IAM role.
-	if target.AwsIamRole != nil {
-		role, err := SetupIamRole(log, cfg, target.AwsIamRole, policyArns...)
-		if err != nil {
-			return err
-		}
-		log.Printf("\t%s\tConfigured Lambda role.\n", Success)
-
-		target.AwsLambdaFunction.Role = *role.Arn
-	}
-
-	// Step 3: Search for an existing lambda function
+	// Step 2: Search for an existing lambda function
 	var lambdaFunc *lambda.FunctionConfiguration
 	{
 		log.Println("\tLambda - Check for existing function")
@@ -88,10 +55,29 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *DeployLambda)
 		}
 	}
 
-	subnetIds := cfg.AwsEc2Vpc.subnetIds
-	securityGroupIds := []string{*cfg.AwsEc2SecurityGroup.result.GroupId}
+	var (
+		vpc           *AwsEc2VpcResult
+		securityGroup *AwsEc2SecurityGroupResult
+	)
+	if target.EnableVPC {
+		if cfg.AwsEc2Vpc.IsDefault {
+			vpc, err = infra.GetAwsEc2DefaultVpc()
+		} else if cfg.AwsEc2Vpc.VpcId != "" {
+			vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.VpcId)
+		} else {
+			vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.CidrBlock)
+		}
+		if err != nil {
+			return err
+		}
 
-	// Step 4: Create or update the code/configuration.
+		securityGroup, err = infra.GetAwsEc2SecurityGroup(cfg.AwsEc2SecurityGroup.GroupName)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Step 3: Create or update the code/configuration.
 	if lambdaFunc != nil {
 		log.Printf("\t\tFound: %s", *lambdaFunc.FunctionArn)
 
@@ -106,7 +92,7 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *DeployLambda)
 		lambdaFunc = codeRes
 		log.Printf("\t\tUpdated Code: %s", *lambdaFunc.FunctionArn)
 
-		configInput, err := target.AwsLambdaFunction.UpdateConfigurationInput(subnetIds, securityGroupIds, target.EnableVPC)
+		configInput, err := target.AwsLambdaFunction.UpdateConfigurationInput(vpc, securityGroup)
 		if err != nil {
 			return err
 		}
@@ -119,7 +105,7 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *DeployLambda)
 
 	} else {
 
-		input, err := target.AwsLambdaFunction.CreateInput(target.CodeS3Bucket, target.CodeS3Key, subnetIds, securityGroupIds, target.EnableVPC)
+		input, err := target.AwsLambdaFunction.CreateInput(target.CodeS3Bucket, target.CodeS3Key, vpc, securityGroup)
 		if err != nil {
 			return err
 		}

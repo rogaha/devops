@@ -116,12 +116,12 @@ image is tagged with the go.mod hash and pushed to the projects
 ### Functions 
 
 Functions are applications that can be executed in short period of time. An python script for 
-[Datadog Log Collection](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs) 
+[Datadog Log Collection](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector) 
 deployed as a function is provided by the devops project in 
 [examples]((https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
 
 A function is built using the defined 
-[Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-lambda-python-ddlogs/Dockerfile).
+[Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/datadog-lambda-logcollector/Dockerfile).
 
  The `Dockerfile` should use a [lambdaci image](https://hub.docker.com/r/lambci/lambda/) as the base image. 
   
@@ -280,6 +280,17 @@ Access/Secret Keys are required
     --no-push                         disable pushing release image to remote repository
     ```
    
+* `deploy infrastructure` - Executes a deploy to setup the infrastructure for the deployment environment.
+      
+    ```bash
+    $ cicd -env [dev|stage|prod] deploy infrastructure [command options]
+    ``` 
+    
+    Options: 
+    ```bash
+    --dry-run                         print out the deploy details
+    ```    
+   
 * `deploy service` - Executes a deploy for a single service
       
     ```bash
@@ -324,6 +335,12 @@ Access/Secret Keys are required
     ```
 
 ### Examples
+
+
+Setup the infrastructure for _dev_
+```bash
+$ cicid --env=dev deploy infrastructure --dry-run=false
+```
 
 Build the example service _aws-ecs-go-web-api_ 
 ```bash

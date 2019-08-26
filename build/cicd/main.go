@@ -160,6 +160,23 @@ func main() {
 			Usage:   "deploy a service or function",
 			Subcommands: []cli.Command{
 				{
+					Name:    "infrastructure",
+					Aliases: []string{"infra"},
+					Usage:   "deploy infrastructure",
+					Flags: []cli.Flag{
+						cli.BoolFlag{
+							Name:  "dry-run",
+							Usage: "print out the deploy details",
+						},
+					},
+					Action: func(c *cli.Context) error {
+						targetEnv := c.GlobalString("env")
+						dryRun := c.Bool("dry-run")
+
+						return config.DeployInfrastructureForTargetEnv(log, awsCredentials, targetEnv, dryRun)
+					},
+				},
+				{
 					Name:  "service",
 					Usage: "deploy a service",
 					Flags: []cli.Flag{

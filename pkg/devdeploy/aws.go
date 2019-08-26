@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	AwsRegistryMaximumImages = 1000
+	AwsRegistryMaximumImages = 900 // Max is actually 1000 but make sure there is always room.
 	AwsTagNameProject        = "Project"
 	AwsTagNameEnv            = "env"
 	AwsTagNameName           = "Name"

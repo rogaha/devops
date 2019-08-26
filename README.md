@@ -63,7 +63,7 @@ _devdeploy_ package that includes configuration for two example applications:
         clusters. With AWS Fargate, you no longer have to provision, configure, and scale clusters of virtual machines to 
         run containers.  
 
-    * [Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs) - 
+    * [Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector) - 
     An python script that is deployed to [AWS Lambda](https://aws.amazon.com/lambda/) to ship logs from AWS to Datadog. 
     
         AWS Lambda lets you run code without provisioning or managing servers. You pay only for the compute time you consume, 
@@ -139,7 +139,7 @@ details for AWS VPC, security group, RDS postgres database, Redis cache cluster,
  
 * `function.go` - Defines your functions that will be deployed to AWS Lambda. This includes settings for the runtime, 
 amount of memory, and timeout. The code has one function defined, 
-[Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-lambda-python-ddlogs). 
+[Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector). 
 Additional functions can easily be defined here.  
 
 * `service.go` - Defines your services that will be deployed to AWS Fargate. This includes settings for your AWS ECS 
@@ -449,7 +449,7 @@ VERSION:
 
 COMMANDS:
    build, b   build a service or function
-   deploy, d  deploy a service or function
+   deploy, d  deploy a service or function or infrastructure
    schema, s  manage the database schema
    help, h    Shows a list of commands or help for one command
 
