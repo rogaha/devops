@@ -48,6 +48,7 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 # LAYER: TESTER - Run all the unittets for the project.
 FROM dev AS tester
 
+RUN find /project/build/vendor/ -type d
 
 # Run the tests for the service being built.
 RUN go test -mod=vendor -v ./...
