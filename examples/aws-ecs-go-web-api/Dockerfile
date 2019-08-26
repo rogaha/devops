@@ -1,5 +1,5 @@
 # LAYER: BASE
-FROM golang:1.12.9-alpine3.9 AS build_base_golang
+FROM golang:1.12.9-alpine3.9 AS dev
 
 LABEL maintainer="lee@geeksinthewoods.com"
 
@@ -17,8 +17,6 @@ RUN go mod download
 RUN go get github.com/pilu/fresh
 
 
-# LAYER: DEV - All the project go files.
-FROM build_base_golang AS dev
 
 ARG name
 ARG code_path=./examples/${name}
