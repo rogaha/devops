@@ -40,31 +40,22 @@ cache:
     paths:
       - cicd
       - vendor
+    expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
   <<: *job_tmpl
   script:
     - './cicd --env=${TARGET_ENV} schema migrate'
-  artifacts:
-    paths:
-      - cicd
 
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
   script:
     - './cicd --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
-  artifacts:
-    paths:
-      - cicd
-      - vendor
 
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
   script:
     - './cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
-  artifacts:
-    paths:
-      - cicd
 
 infra:setup:prod:
   <<: *setup_tmpl
