@@ -79,7 +79,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 	}
 
 	// Step 4: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
-	zones := make(map[string]*AwsRoute53ZoneResult)
+	zones := make(map[string][]string)
 	{
 		lookupDomains := []string{}
 		if targetService.ServiceHostPrimary != "" {
@@ -96,7 +96,18 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			if err != nil {
 				return err
 			}
-			zones[zone.ZoneId] = zone
+
+			if _, ok := zones[zone.ZoneId]; !ok {
+				zones[zone.ZoneId] = []string{}
+			}
+
+
+			for idx, adn := range zone.AssocDomains {
+				if adn == dn {
+					zones[zone.ZoneId] = append(zones[zone.ZoneId], zone.Entries[idx])
+					break
+				}
+			}
 		}
 	}
 
@@ -275,12 +286,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			// Append the Route53 Zones as an env var to be used by the service for maintaining A records when new tasks
 			// are spun up or down.
 			if len(zones) > 0 {
-				zoneArecNames := make(map[string][]string)
-				for _, zone := range zones {
-					zoneArecNames[zone.ZoneId] = zone.Entries
-				}
-
-				dat, err := json.Marshal(zoneArecNames)
+				dat, err := json.Marshal(zones)
 				if err != nil {
 					return errors.Wrapf(err, "failed to json marshal zones")
 				}
