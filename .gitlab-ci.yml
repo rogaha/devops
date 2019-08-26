@@ -6,9 +6,6 @@ services:
 variables:
   DOCKER_TLS_CERTDIR: ""
 
-before_script:
-  - 'go install ./build/cicd'
-
 stages:
   - setup:dev
   - build:dev
@@ -36,22 +33,39 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
-    - 'cicd --env=${TARGET_ENV} infrastructure'
+    - 'go install ./build/cicd'
+    - 'cicd --env=${TARGET_ENV} deploy infrastructure'
+  artifacts:
+    paths:
+      - /go/bin/cicd
+    expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
   <<: *job_tmpl
   script:
     - 'cicd --env=${TARGET_ENV} schema migrate'
+  artifacts:
+    paths:
+      - /go/bin/cicd
+    expire_in: 1 day
 
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
   script:
     - 'cicd --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
+  artifacts:
+    paths:
+      - /go/bin/cicd
+    expire_in: 1 day
 
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
   script:
     - 'cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
+  artifacts:
+    paths:
+      - /go/bin/cicd
+    expire_in: 1 day
 
 infra:setup:prod:
   <<: *setup_tmpl
