@@ -521,14 +521,19 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 		// Add all the defined lifecycle rules for the bucket.
 		if len(s3Bucket.LifecycleRules) > 0 {
+			var curRules []*s3.LifecycleRule
 			res, err := svc.GetBucketLifecycleConfiguration(&s3.GetBucketLifecycleConfigurationInput{
 				Bucket: aws.String(bucketName),
 			})
 			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to get lifecycle rules for s3 bucket '%s'", bucketName)
+				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != "NoSuchLifecycleConfiguration") {
+					return nil, errors.Wrapf(err, "Failed to get lifecycle rules for s3 bucket '%s'", bucketName)
+				}
+			} else {
+				curRules = res.Rules
 			}
 
-			if diff := cmp.Diff(s3Bucket.LifecycleRules, res.Rules); diff != "" {
+			if diff := cmp.Diff(s3Bucket.LifecycleRules, curRules); diff != "" {
 				log.Printf("\t\t\t\tLifecycle rules diff - %s\n", diff)
 
 				_, err = svc.PutBucketLifecycleConfiguration(&s3.PutBucketLifecycleConfigurationInput{
@@ -581,18 +586,20 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 				return nil, errors.Wrapf(err, "Failed JSON decode policy for s3 bucket '%s'", bucketName)
 			}
 
+			var curMap map[string]interface{}
 			res, err := svc.GetBucketPolicy(&s3.GetBucketPolicyInput{
 				Bucket: aws.String(bucketName),
 			})
 			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to get bucket policy for s3 bucket '%s'", bucketName)
-			}
-
-			// Remove the whitespace from the provided policy to ensure the diff compare works.
-			var curMap map[string]interface{}
-			if res != nil && res.Policy != nil && *res.Policy != "" {
-				if err := json.Unmarshal([]byte(*res.Policy), &curMap); err != nil {
-					return nil, errors.Wrapf(err, "Failed JSON decode policy for s3 bucket '%s'", bucketName)
+				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != "NoSuchBucketPolicy") {
+					return nil, errors.Wrapf(err, "Failed to get bucket policy for s3 bucket '%s'", bucketName)
+				}
+			} else {
+				// Remove the whitespace from the provided policy to ensure the diff compare works.
+				if res != nil && res.Policy != nil && *res.Policy != "" {
+					if err := json.Unmarshal([]byte(*res.Policy), &curMap); err != nil {
+						return nil, errors.Wrapf(err, "Failed JSON decode policy for s3 bucket '%s'", bucketName)
+					}
 				}
 			}
 
@@ -1153,7 +1160,7 @@ func (infra *Infrastructure) setupAwsElasticCacheCluster(log *log.Logger, target
 
 	// If the cache cluster is not active because it was recently created, wait for it to become active.
 	if *cacheCluster.CacheClusterStatus != "available" {
-		log.Printf("\t\tWhat for cluster to become available.")
+		log.Printf("\t\tWait for cluster to become available.")
 		err = svc.WaitUntilCacheClusterAvailable(&elasticache.DescribeCacheClustersInput{
 			CacheClusterId: aws.String(cacheClusterId),
 		})
@@ -1314,7 +1321,12 @@ func (infra *Infrastructure) GetDBConnInfo(name string) (*DBConnInfo, error) {
 			return nil, errors.Wrapf(err, "Failed to get value for secret id %s", dbSecretId)
 		}
 	} else {
-		err = json.Unmarshal([]byte(*res.SecretString), &dbInfo)
+		if len(res.SecretBinary) > 0 {
+			err = json.Unmarshal(res.SecretBinary, &dbInfo)
+		} else {
+			err = json.Unmarshal([]byte(*res.SecretString), &dbInfo)
+		}
+
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to json decode db credentials")
 		}
@@ -1336,12 +1348,28 @@ func (infra *Infrastructure) SaveDbConnInfo(name string, dBConnInfo *DBConnInfo)
 
 	// Create the new entry in AWS Secret Manager with the database password.
 	sm := secretsmanager.New(infra.awsCredentials.Session())
-	_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
-		Name:         aws.String(dbSecretId),
-		SecretString: aws.String(string(dat)),
+	
+	_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
+		SecretId:         aws.String(dbSecretId),
+		SecretBinary: dat,
 	})
 	if err != nil {
-		return errors.Wrap(err, "Failed to create new secret with db credentials")
+		aerr, ok := err.(awserr.Error)
+
+		if ok && aerr.Code() == secretsmanager.ErrCodeResourceNotFoundException {
+			log.Printf("\tCreating new entry in AWS Secret Manager using secret ID %s\n", dbSecretId)
+
+			_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
+				Name:     aws.String(dbSecretId),
+				SecretBinary: dat,
+			})
+			if err != nil {
+				return errors.Wrap(err, "Failed to create new secret with db credentials")
+			}
+
+		} else {
+			return errors.Wrap(err, "Failed to update new secret with db credentials")
+		}
 	}
 
 	return nil

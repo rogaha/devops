@@ -24,7 +24,7 @@ import (
 
 const (
 	// ProjectNamePrefix will be appending to the name of the project.
-	ProjectNamePrefix = "gitw-"
+	ProjectNamePrefix = "gitw2-"
 
 	// GitLabProjectBaseUrl is the base url used to create links to a specific CI/CD job or pipeline by ID.
 	GitLabProjectBaseUrl = "https://gitlab.com/geeks-accelerator/oss/devops"
@@ -33,7 +33,7 @@ const (
 	// a good option for intermittent or unpredictable workloads.
 	EnableRdsServerless = true
 
-	// EnableElasticCache will include a Redis Elastic Cluster
+	// EnableElasticCache will include a Redis Elastic Cluster. 
 	EnableElasticCache = true
 )
 

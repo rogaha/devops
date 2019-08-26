@@ -53,7 +53,6 @@ cache:
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
   script:
-    - 'echo $PWD && ls .'
     - './cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
 
 infra:setup:prod:
