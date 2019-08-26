@@ -107,6 +107,7 @@ aws-ecs-go-web-api:deploy:prod:
     - prod
     - prod-web-api
   dependencies:
+    - 'infra:setup:prod'
     - 'aws-ecs-go-web-api:build:prod'
     - 'db:migrate:prod'
   variables:
@@ -140,6 +141,7 @@ datadog-logcollector:deploy:prod:
     - prod
     - prod-ddlogs
   dependencies:
+    - 'infra:setup:prod'
     - 'datadog-logcollector:build:prod'
     - 'db:migrate:prod'
   variables:
