@@ -33,7 +33,8 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
-    - 'go build -o cicd ./build/cicd'
+    - 'go mod vendor'
+    - 'go build -mod=vendor -o cicd ./build/cicd'
     - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
