@@ -33,14 +33,11 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
-    - 'go mod download'
     - 'go build -o cicd ./build/cicd'
-    - 'cp -r $GOPATH/pkg ./build/go-pkg'
     - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
       - cicd
-      - ./build/go-pkg
     expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl

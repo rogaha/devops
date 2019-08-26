@@ -9,9 +9,6 @@ RUN apk --no-cache add \
 # Change dir to project base.
 WORKDIR /project/build
 
-# Enable gitlab to populate package directory from artifact.
-COPY build/go-pkg /go/pkg
-
 # Enable go modules.
 ENV GO111MODULE="on"
 COPY go.mod .
