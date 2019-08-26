@@ -33,11 +33,13 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
+    - 'go mod vendor'
     - 'go build -o cicd ./build/cicd'
     - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
       - cicd
+      - vendor
 
 .migrate_tmpl: &migrate_tmpl
   <<: *job_tmpl
@@ -46,6 +48,7 @@ cache:
   artifacts:
     paths:
       - cicd
+      - vendor
 
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
@@ -54,6 +57,7 @@ cache:
   artifacts:
     paths:
       - cicd
+      - vendor
 
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
@@ -62,6 +66,7 @@ cache:
   artifacts:
     paths:
       - cicd
+      - vendor
 
 infra:setup:prod:
   <<: *setup_tmpl
@@ -123,7 +128,7 @@ aws-ecs-go-web-api:deploy:prod:
     AWS_USE_ROLE: 'true'
   #when: manual
 
-aws-lambda-python-ddlogs:build:prod:
+datadog-logcollector:build:prod:
   <<: *build_tmpl
   stage: build:prod
   tags:
@@ -135,9 +140,9 @@ aws-lambda-python-ddlogs:build:prod:
   variables:
     TARGET_ENV: 'prod'
     TARGET_TYPE: 'function'
-    TARGET_REF: 'aws-lambda-python-ddlogs'
+    TARGET_REF: 'datadog-logcollector'
     AWS_USE_ROLE: 'true'
-aws-lambda-python-ddlogs:deploy:prod:
+datadog-logcollector:deploy:prod:
   <<: *deploy_tmpl
   stage: deploy:prod
   tags:
@@ -147,12 +152,12 @@ aws-lambda-python-ddlogs:deploy:prod:
     - prod
     - prod-ddlogs
   dependencies:
-    - 'aws-lambda-python-ddlogs:build:prod'
+    - 'datadog-logcollector:build:prod'
     - 'db:migrate:prod'
   variables:
     TARGET_ENV: 'prod'
     TARGET_TYPE: 'function'
-    TARGET_REF: 'aws-lambda-python-ddlogs'
+    TARGET_REF: 'datadog-logcollector'
     AWS_USE_ROLE: 'true'
   #when: manual
 
@@ -169,4 +174,4 @@ tag:release:prod:
     - master
   dependencies:
     - 'aws-ecs-go-web-api:deploy:prod'
-    - 'aws-lambda-python-ddlogs:deploy:prod'
+    - 'datadog-logcollector:deploy:prod'
