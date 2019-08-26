@@ -48,15 +48,15 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 # LAYER: TESTER - Run all the unittets for the project.
 FROM dev AS tester
 
-COPY --from=dev /project/build/vendor /project/build/vendor
 
 # Run the tests for the service being built.
-RUN go test -mod=/project/build/vendor -v ./...
+RUN go test -mod=vendor -v ./...
 
 
 
 # LAYER: BUILDER - Do the golang build to produce a static binary.
 FROM dev AS builder
+
 
 RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags "-X main.build=${commit_ref}" -a -installsuffix nocgo -o /gosrv .
 
