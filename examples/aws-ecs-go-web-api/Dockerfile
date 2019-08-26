@@ -13,7 +13,8 @@ WORKDIR $GOPATH/src/geeks-accelerator/oss/devops
 ENV GO111MODULE="on"
 COPY go.mod .
 COPY go.sum .
-RUN go mod download
+COPY vendor ./vendor
+RUN go mod vendor
 RUN go get github.com/pilu/fresh
 
 
@@ -25,7 +26,7 @@ ARG commit_ref=-
 # Copy shared packages.
 COPY internal ./internal
 COPY pkg ./pkg
-COPY vendor ./vendor
+
 
 # Copy cmd specific packages.
 COPY ${code_path} ${code_path}
@@ -48,14 +49,14 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 FROM dev AS tester
 
 # Run the tests for the service being built.
-RUN go test -v ./...
+RUN go test -mod=vendor -v ./...
 
 
 
 # LAYER: BUILDER - Do the golang build to produce a static binary.
 FROM dev AS builder
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.build=${commit_ref}" -a -installsuffix nocgo -o /gosrv .
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags "-X main.build=${commit_ref}" -a -installsuffix nocgo -o /gosrv .
 
 
 

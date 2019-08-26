@@ -6,12 +6,6 @@ services:
 variables:
   DOCKER_TLS_CERTDIR: ""
 
-before_script:
-  - 'echo $GOPATH'
-  - 'echo $PWD'
-  - 'export GOPATH=$PWD/go'
-  - 'echo $GOPATH'
-
 stages:
   - setup:dev
   - build:dev
@@ -44,7 +38,7 @@ cache:
   artifacts:
     paths:
       - cicd
-      - go
+      - vendor
     expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
