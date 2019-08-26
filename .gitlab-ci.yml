@@ -33,41 +33,35 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
-    - 'go install ./build/cicd'
-    - 'which cicd'
-    - 'cicd --env=${TARGET_ENV} deploy infrastructure'
+    - 'go install -o cicd ./build/cicd'
+    - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
-      - /go/bin/cicd
-      - /go/pkg
-    expire_in: 1 day
+      - cicd
 
 .migrate_tmpl: &migrate_tmpl
   <<: *job_tmpl
   script:
-    - 'cicd --env=${TARGET_ENV} schema migrate'
+    - './cicd --env=${TARGET_ENV} schema migrate'
   artifacts:
     paths:
-      - /go/bin/cicd
-    expire_in: 1 day
+      - cicd
 
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
   script:
-    - 'cicd --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
+    - './cicd --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
   artifacts:
     paths:
-      - /go/bin/cicd
-    expire_in: 1 day
+      - cicd
 
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
   script:
-    - 'cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
+    - './cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
   artifacts:
     paths:
-      - /go/bin/cicd
-    expire_in: 1 day
+      - cicd
 
 infra:setup:prod:
   <<: *setup_tmpl
