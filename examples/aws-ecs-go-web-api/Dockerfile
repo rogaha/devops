@@ -13,23 +13,27 @@ WORKDIR /project/build
 ENV GO111MODULE="on"
 COPY go.mod .
 COPY go.sum .
+
+# Include any existing downloaded dependencies, gitlab cicd will populate this with an artifact.
 COPY vendor ./vendor
+
+# Copy shared packages first for mod vendor to detect dependencies.
+COPY internal ./internal
+COPY pkg ./pkg
 RUN go mod vendor
+
+# Install fresh for auto-reloads for dev when running docker-compose.
 RUN go get github.com/pilu/fresh
-
-
 
 ARG name
 ARG code_path=./examples/${name}
 ARG commit_ref=-
 
-# Copy shared packages.
-COPY internal ./internal
-COPY pkg ./pkg
-
-
 # Copy cmd specific packages.
 COPY ${code_path} ${code_path}
+
+# Include any missing dependencies for the target.
+RUN go mod vendor -v
 
 # Copy the global templates.
 ADD configs/fresh-auto-reload.conf /runner.conf
@@ -47,14 +51,6 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 
 # LAYER: TESTER - Run all the unittets for the project.
 FROM dev AS tester
-
-
-RUN find /project/build -type d
-
-
-RUN echo $PWD
-RUN ls .
-
 
 # Run the tests for the service being built.
 RUN go test -mod=vendor -v ./...

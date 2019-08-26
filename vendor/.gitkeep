@@ -1,2 +1,0 @@
-support for .gitlab-ci.yml to run go mod vendor
-docker files can then reference that directory to improve build speed 
