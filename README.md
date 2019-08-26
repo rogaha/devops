@@ -316,7 +316,7 @@ instance will be a dedicated host since we need it always up and running, thus i
 11. Install GitLab Runner from the [official GitLab repository](https://docs.gitlab.com/runner/install/linux-repository.html)
     ```bash 
     curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh | sudo bash
-    yes | sudo yum install gitlab-runner
+    yes | sudo yum install -y gitlab-runner
     ``` 
     
 12. [Install Docker Community Edition](https://docs.docker.com/install/).
