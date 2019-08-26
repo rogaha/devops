@@ -49,13 +49,11 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 FROM dev AS tester
 
 
-COPY --from=dev /project/build/vendor /project/build/vendor
+RUN find /project/build -type d
 
 
-RUN find /project/build/vendor -type d
-
-
-RUN ls . 
+RUN echo $PWD
+RUN ls .
 
 
 # Run the tests for the service being built.
