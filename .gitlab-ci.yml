@@ -162,5 +162,6 @@ tag:release:prod:
   only:
     - master
   dependencies:
+    - 'infra:setup:prod'
     - 'aws-ecs-go-web-api:deploy:prod'
     - 'datadog-logcollector:deploy:prod'
