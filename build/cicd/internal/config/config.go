@@ -600,7 +600,6 @@ func DeployInfrastructureForTargetEnv(log *log.Logger, awsCredentials devdeploy.
 		}
 		log.Printf("DeployFunctionForTargetEnv : config : %v\n", string(cfgJSON))
 
-
 		return nil
 	}
 
@@ -609,9 +608,5 @@ func DeployInfrastructureForTargetEnv(log *log.Logger, awsCredentials devdeploy.
 		return err
 	}
 
-
-
-
 	return nil
 }
-

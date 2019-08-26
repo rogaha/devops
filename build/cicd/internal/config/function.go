@@ -14,8 +14,8 @@ import (
 type Function = string
 
 var (
-	FunctionGoWebApi      = "go-web-api"
-	FunctionDatadogLogcollector= "datadog-logcollector"
+	FunctionGoWebApi            = "go-web-api"
+	FunctionDatadogLogcollector = "datadog-logcollector"
 )
 
 // List of function names used by main.go for help.
@@ -58,16 +58,15 @@ func NewFunctionContext(funcName string, cfg *devdeploy.Config) (*FunctionContex
 	switch funcName {
 	case FunctionGoWebApi:
 
-
 		// AwsLambdaFunction defines the details needed to create an lambda function.
 		ctx.AwsLambdaFunction = &devdeploy.AwsLambdaFunction{
 			FunctionName: ctx.Name,
 			Description:  "GO Web API with API Gateway",
 
-			Handler:    "lambda_function.lambda_handler",
-			Runtime:    "python2.7",
-			MemorySize: 128,
-			Timeout: aws.Int64(30),
+			Handler:     "lambda_function.lambda_handler",
+			Runtime:     "python2.7",
+			MemorySize:  128,
+			Timeout:     aws.Int64(30),
 			Environment: map[string]string{},
 			Tags: []devdeploy.Tag{
 				{Key: devdeploy.AwsTagNameProject, Value: cfg.ProjectName},

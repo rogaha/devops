@@ -160,9 +160,9 @@ func main() {
 			Usage:   "deploy a service or function",
 			Subcommands: []cli.Command{
 				{
-					Name:  "infrastructure",
+					Name:    "infrastructure",
 					Aliases: []string{"infra"},
-					Usage: "deploy infrastructure",
+					Usage:   "deploy infrastructure",
 					Flags: []cli.Flag{
 						cli.BoolFlag{
 							Name:  "dry-run",

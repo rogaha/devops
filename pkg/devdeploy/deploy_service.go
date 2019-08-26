@@ -2,7 +2,6 @@ package devdeploy
 
 import (
 	"compress/gzip"
-	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -16,28 +15,22 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/acm"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecs"
-	"github.com/aws/aws-sdk-go/service/elbv2"
-	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
 )
 
-
 // DeployServiceToTargetEnv deploys a service to AWS ECS. The following steps will be executed for deployment:
-// 1. AWS ECR repository
-// 2. Find AWS Route 53 Zones for service hostnames.
-// 3. Setup service discovery for service.
-// 4. Ensure the Cloudwatch Log group exists.
-// 5. Setup the AWS Elastic Load Balancer if enabled.
-// 6. Setup the AWS ECS Cluster for the service.
-// 7. Register AWS ECS task definition.
-// 8. Check for an existing AWS ECS service and if it needs to be recreated.
-// 9. Create or update the AWS ECS service.
+// 1. Load the VPC for the project.
+// 2. Load the security group.
+// 3. AWS ECR repository
+// 4. Find AWS Route 53 Zones for service hostnames.
+// 5. Find service discovery for service.
+// 6. Find Load Balancer if enabled.
+// 7. Setup the AWS ECS Cluster for the service.
+// 8. Register AWS ECS task definition.
+// 9. Check for an existing AWS ECS service and if it needs to be created, recreated, or updated.
 // 10. Sync static files to AWS S3.
 // 11. Wait for AWS ECS service to enter a stable state.
 func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *ProjectService) error {
@@ -51,27 +44,28 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 	startTime := time.Now()
 
-	// Find the vpc.
+	// Step 1: Find the vpc.
 	var vpc *AwsEc2VpcResult
-	if cfg.AwsEc2Vpc.IsDefault {
-		vpc, err = infra.GetAwsEc2DefaultVpc()
-	} else if cfg.AwsEc2Vpc.VpcId != "" {
-		vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.VpcId)
-	} else {
-		vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.CidrBlock)
+	{
+		if cfg.AwsEc2Vpc.IsDefault {
+			vpc, err = infra.GetAwsEc2DefaultVpc()
+		} else if cfg.AwsEc2Vpc.VpcId != "" {
+			vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.VpcId)
+		} else {
+			vpc, err = infra.GetAwsEc2Vpc(cfg.AwsEc2Vpc.CidrBlock)
+		}
+		if err != nil {
+			return err
+		}
 	}
+
+	// Step 2: Load the EC2 security group.
+	securityGroup, err := infra.GetAwsEc2SecurityGroup(cfg.AwsEc2SecurityGroup.GroupName)
 	if err != nil {
 		return err
 	}
 
-	// Load the EC2 security group.
-	sg, err := infra.GetAwsEc2SecurityGroup(cfg.AwsEc2SecurityGroup.GroupName)
-	if err != nil {
-		return err
-	}
-	securityGroupIds := []string{sg.GroupId}
-
-	// Step 1: Find the AWS ECR repository.
+	// Step 3: Find the AWS ECR repository.
 	{
 		log.Println("\tECR - Get repository")
 
@@ -84,10 +78,8 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		log.Printf("\t%s\tRelease image set to %s\n", Success, targetService.ReleaseImage)
 	}
 
-	// Step 2: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
-
-	// Generate a slice with the primary domain name and include all the alternative domain names.
-	var zoneArecNames = map[string][]string{}
+	// Step 4: Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
+	zones := make(map[string]*AwsRoute53ZoneResult)
 	{
 		lookupDomains := []string{}
 		if targetService.ServiceHostPrimary != "" {
@@ -99,348 +91,49 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			}
 		}
 
-		zones, err := infra.setupRoute53Zones(log, cfg, lookupDomains)
-		if err != nil {
-			return err
-		}
-
-		for _, z := range zones {
-			zoneArecNames[z.ZoneId] = z.Entries
+		for _, dn := range lookupDomains {
+			zone, err := infra.GetRoute53ZoneByDomain(dn)
+			if err != nil {
+				return err
+			}
+			zones[zone.ZoneId] = zone
 		}
 	}
 
-	// Step 3: Setup service discovery.
+	// Step 5: Find service discovery service.
 	var sdService *AwsSdServiceResult
 	if targetService.AwsSdPrivateDnsNamespace != nil {
-		log.Println("\tService Discovery - Get or Create Namespace")
-
-		sdNamespace, err := infra.setupSdPrivateDnsNamespace(log, cfg, targetService.AwsSdPrivateDnsNamespace, vpc.VpcId )
+		sdNamespace, err := infra.GetAwsSdPrivateDnsNamespace(targetService.AwsSdPrivateDnsNamespace.Name)
 		if err != nil {
 			return nil
 		}
 
 		// Ensure the service exists in the namespace.
 		if targetService.AwsSdPrivateDnsNamespace.Service != nil {
-			sdService, err = infra.setupSdService(log, cfg,  targetService.AwsSdPrivateDnsNamespace.Service, sdNamespace.Name)
+			sdService, err = sdNamespace.GetService(targetService.AwsSdPrivateDnsNamespace.Service.Name)
 			if err != nil {
 				return nil
 			}
 		}
 	}
 
-	// Step 4: Try to find the AWS Cloudwatch Log Group by name or create new one.
-	{
-		_, err =  infra.setupCloudWatchLogGroup(log, cfg,  targetService.AwsCloudWatchLogGroup)
-		if err != nil {
-			return nil
-		}
-	}
-
-	// Step 5: If an Elastic Load Balancer is enabled, then ensure one exists else create one.
-	var ecsELBs []*ecs.LoadBalancer
+	// Step 6: Find an Elastic Load Balancer if enabled.
+	var elb *AwsElbLoadBalancerResult
 	if targetService.AwsElbLoadBalancer != nil {
-
-		// If HTTPS enabled on ELB, then need to find ARN certificates first.
-		var certificateArn string
-		if targetService.EnableHTTPS {
-			certificate, err := infra.setupAcmCertificate(log, cfg, targetService.ServiceHostPrimary, targetService.ServiceHostNames)
-			if err != nil {
-				return err
-			}
-			certificateArn = certificate.CertificateArn
-		}
-
-		log.Println("EC2 - Find Elastic Load Balancer")
-		{
-			svc := elbv2.New(cfg.AwsSession())
-
-			loadBalancerName := targetService.AwsElbLoadBalancer.Name
-
-			// Try to find load balancer given a name.
-			var elb *elbv2.LoadBalancer
-			err := svc.DescribeLoadBalancersPages(&elbv2.DescribeLoadBalancersInput{
-				Names: []*string{aws.String(loadBalancerName)},
-			}, func(res *elbv2.DescribeLoadBalancersOutput, lastPage bool) bool {
-				// Loop through the results to find the match ELB.
-				for _, lb := range res.LoadBalancers {
-					if *lb.LoadBalancerName == loadBalancerName {
-						elb = lb
-						return false
-					}
-				}
-				return !lastPage
-			})
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != elbv2.ErrCodeLoadBalancerNotFoundException {
-					return errors.Wrapf(err, "Failed to describe load balancer '%s'", loadBalancerName)
-				}
-			}
-
-			var curListeners []*elbv2.Listener
-			if elb == nil {
-				input, err := targetService.AwsElbLoadBalancer.Input(subnetIds, securityGroupIds)
-				if err != nil {
-					return err
-				}
-
-				// If no repository was found, create one.
-				createRes, err := svc.CreateLoadBalancer(input)
-				if err != nil {
-					return errors.Wrapf(err, "Failed to create load balancer '%s'", loadBalancerName)
-				}
-				elb = createRes.LoadBalancers[0]
-
-				log.Printf("\t\tCreated: %s.", *elb.LoadBalancerArn)
-			} else {
-				log.Printf("\t\tFound: %s.", *elb.LoadBalancerArn)
-
-				// Search for existing listeners associated with the load balancer.
-				res, err := svc.DescribeListeners(&elbv2.DescribeListenersInput{
-					// The Amazon Resource Name (ARN) of the load balancer.
-					LoadBalancerArn: aws.String(*elb.LoadBalancerArn),
-					// There are two target groups, return both associated listeners if they exist.
-					PageSize: aws.Int64(2),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to find listeners for load balancer '%s'", loadBalancerName)
-				}
-				curListeners = res.Listeners
-			}
-			targetService.AwsElbLoadBalancer.result = elb
-
-			// The state code. The initial state of the load balancer is provisioning. After
-			// the load balancer is fully set up and ready to route traffic, its state is
-			// active. If the load balancer could not be set up, its state is failed.
-			log.Printf("\t\t\tState: %s.", *targetService.AwsElbLoadBalancer.result.State.Code)
-
-			targetGroupName := targetService.AwsElbLoadBalancer.TargetGroup.Name
-
-			var targetGroup *elbv2.TargetGroup
-			err = svc.DescribeTargetGroupsPages(&elbv2.DescribeTargetGroupsInput{
-				LoadBalancerArn: aws.String(*elb.LoadBalancerArn),
-			}, func(res *elbv2.DescribeTargetGroupsOutput, lastPage bool) bool {
-				for _, tg := range res.TargetGroups {
-					if *tg.TargetGroupName == targetGroupName {
-						targetGroup = tg
-						return false
-					}
-				}
-				return !lastPage
-			})
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != elbv2.ErrCodeTargetGroupNotFoundException {
-					return errors.Wrapf(err, "Failed to describe target group '%s'", targetGroupName)
-				}
-			}
-
-			if targetGroup == nil {
-				input, err := targetService.AwsElbLoadBalancer.TargetGroup.Input(vpcId)
-				if err != nil {
-					return err
-				}
-
-				// If no target group was found, create one.
-				createRes, err := svc.CreateTargetGroup(input)
-				if err != nil {
-					return errors.Wrapf(err, "Failed to create target group '%s'", targetGroupName)
-				}
-				targetGroup = createRes.TargetGroups[0]
-
-				log.Printf("\t\tAdded target group: %s.", *targetGroup.TargetGroupArn)
-			} else {
-				log.Printf("\t\tHas target group: %s.", *targetGroup.TargetGroupArn)
-			}
-			targetService.AwsElbLoadBalancer.TargetGroup.result = targetGroup
-
-			if targetService.AwsElbLoadBalancer.EcsTaskDeregistrationDelay > 0 {
-				// If no target group was found, create one.
-				_, err = svc.ModifyTargetGroupAttributes(&elbv2.ModifyTargetGroupAttributesInput{
-					TargetGroupArn: targetGroup.TargetGroupArn,
-					Attributes: []*elbv2.TargetGroupAttribute{
-						&elbv2.TargetGroupAttribute{
-							// The name of the attribute.
-							Key: aws.String("deregistration_delay.timeout_seconds"),
-
-							// The value of the attribute.
-							Value: aws.String(strconv.Itoa(targetService.AwsElbLoadBalancer.EcsTaskDeregistrationDelay)),
-						},
-					},
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to modify target group '%s' attributes", targetGroupName)
-				}
-
-				log.Printf("\t\t\tSet sttributes.")
-			}
-
-			listenerPorts := map[string]int64{
-				"HTTP": 80,
-			}
-			if targetService.EnableHTTPS {
-				listenerPorts["HTTPS"] = 443
-			}
-
-			for listenerProtocol, listenerPort := range listenerPorts {
-
-				var foundListener bool
-				for _, cl := range curListeners {
-					if *cl.Port == listenerPort {
-						foundListener = true
-						break
-					}
-				}
-
-				if !foundListener {
-					listenerInput := &elbv2.CreateListenerInput{
-						// The actions for the default rule. The rule must include one forward action
-						// or one or more fixed-response actions.
-						//
-						// If the action type is forward, you specify a target group. The protocol of
-						// the target group must be HTTP or HTTPS for an Application Load Balancer.
-						// The protocol of the target group must be TCP, TLS, UDP, or TCP_UDP for a
-						// Network Load Balancer.
-						//
-						// DefaultActions is a required field
-						DefaultActions: []*elbv2.Action{
-							&elbv2.Action{
-								// The type of action. Each rule must include exactly one of the following types
-								// of actions: forward, fixed-response, or redirect.
-								//
-								// Type is a required field
-								Type: aws.String("forward"),
-
-								// The Amazon Resource Name (ARN) of the target group. Specify only when Type
-								// is forward.
-								TargetGroupArn: targetGroup.TargetGroupArn,
-							},
-						},
-
-						// The Amazon Resource Name (ARN) of the load balancer.
-						//
-						// LoadBalancerArn is a required field
-						LoadBalancerArn: elb.LoadBalancerArn,
-
-						// The port on which the load balancer is listening.
-						//
-						// Port is a required field
-						Port: aws.Int64(listenerPort),
-
-						// The protocol for connections from clients to the load balancer. For Application
-						// Load Balancers, the supported protocols are HTTP and HTTPS. For Network Load
-						// Balancers, the supported protocols are TCP, TLS, UDP, and TCP_UDP.
-						//
-						// Protocol is a required field
-						Protocol: aws.String(listenerProtocol),
-					}
-
-					if listenerProtocol == "HTTPS" {
-						listenerInput.Certificates = append(listenerInput.Certificates, &elbv2.Certificate{
-							CertificateArn: aws.String(certificateArn),
-						})
-					}
-
-					// If no repository was found, create one.
-					createRes, err := svc.CreateListener(listenerInput)
-					if err != nil {
-						return errors.Wrapf(err, "Failed to create listener '%s'", loadBalancerName)
-					}
-
-					log.Printf("\t\t\tAdded Listener: %s.", *createRes.Listeners[0].ListenerArn)
-				}
-			}
-
-			ecsELBs = append(ecsELBs, &ecs.LoadBalancer{
-				// The name of the container (as it appears in a container definition) to associate
-				// with the load balancer.
-				ContainerName: aws.String(targetService.AwsEcsService.ServiceName),
-				// The port on the container to associate with the load balancer. This port
-				// must correspond to a containerPort in the service's task definition. Your
-				// container instances must allow ingress traffic on the hostPort of the port
-				// mapping.
-				ContainerPort: targetGroup.Port,
-				// The full Amazon Resource Name (ARN) of the Elastic Load Balancing target
-				// group or groups associated with a service or task set.
-				TargetGroupArn: targetGroup.TargetGroupArn,
-			})
-
-			{
-				log.Println("Ensure Load Balancer DNS name exists for hosted zones.")
-				log.Printf("\t\tDNSName: '%s'.\n", *elb.DNSName)
-
-				svc := route53.New(cfg.AwsSession())
-
-				for zoneId, aNames := range zoneArecNames {
-					log.Printf("\tChange zone '%s'.\n", zoneId)
-
-					input := &route53.ChangeResourceRecordSetsInput{
-						ChangeBatch: &route53.ChangeBatch{
-							Changes: []*route53.Change{},
-						},
-						HostedZoneId: aws.String(zoneId),
-					}
-
-					// Add all the A record names with the same set of public IPs.
-					for _, aName := range aNames {
-						log.Printf("\t\tAdd A record for '%s'.\n", aName)
-
-						input.ChangeBatch.Changes = append(input.ChangeBatch.Changes, &route53.Change{
-							Action: aws.String("UPSERT"),
-							ResourceRecordSet: &route53.ResourceRecordSet{
-								Name: aws.String(aName),
-								Type: aws.String("A"),
-								AliasTarget: &route53.AliasTarget{
-									HostedZoneId:         elb.CanonicalHostedZoneId,
-									DNSName:              elb.DNSName,
-									EvaluateTargetHealth: aws.Bool(true),
-								},
-							},
-						})
-					}
-
-					log.Printf("\tUpdated '%s'.\n", zoneId)
-					_, err := svc.ChangeResourceRecordSets(input)
-					if err != nil {
-						return errors.Wrapf(err, "Failed to update A records for zone '%s'", zoneId)
-					}
-				}
-			}
-
-			log.Printf("\t%s\tLoad balancer configured.\n", Success)
-		}
-	} else {
-
-		// When not using an Elastic Load Balancer, services need to support direct access via HTTPS.
-		// HTTPS is terminated via the web server and not on the Load Balancer.
-		if targetService.EnableHTTPS {
-			log.Println("\tEC2 - Enable HTTPS port 443 for security group.")
-
-			svc := ec2.New(cfg.AwsSession())
-
-			// Enable services to be publicly available via HTTPS port 443.
-			_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
-				IpProtocol: aws.String("tcp"),
-				CidrIp:     aws.String("0.0.0.0/0"),
-				FromPort:   aws.Int64(443),
-				ToPort:     aws.Int64(443),
-				GroupId:    cfg.AwsEc2SecurityGroup.result.GroupId,
-			})
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
-					return errors.Wrapf(err, "Failed to add ingress for security group '%s'",
-						cfg.AwsEc2SecurityGroup.GroupName)
-				}
-			}
+		elb, err = infra.GetAwsElbLoadBalancer(targetService.AwsElbLoadBalancer.Name)
+		if err != nil {
+			return err
 		}
 	}
 
-	// Step 6: Try to find AWS ECS Cluster by name or create new one.
+	// Step 7: Try to find AWS ECS Cluster by name or create new one.
 	ecsCluster, err := infra.GetAwsEcsCluster(targetService.AwsEcsCluster.ClusterName)
 	if err != nil {
 		return err
 	}
 
-	// Step 7: Register a new ECS task definition.
-	var taskDef *ecs.TaskDefinition
+	// Step 8: Register a new ECS task definition.
+	var taskDef *AwsEcsTaskDefinitionResult
 	{
 		log.Println("\tECS - Register task definition")
 
@@ -502,7 +195,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				placeholders["{HTTPS_ENABLED}"] = "true"
 
 				// When there is no Elastic Load Balancer, we need to terminate HTTPS on the app.
-				if len(ecsELBs) == 0 {
+				if elb == nil {
 					placeholders["{HTTPS_HOST}"] = "0.0.0.0:443"
 				}
 			}
@@ -529,15 +222,30 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				placeholders["{STATIC_FILES_CLOUDFRONT_ENABLED}"] = "true"
 			}
 
-			// When db is set, update the placeholders.
-			if cfg.DBConnInfo != nil {
-				placeholders["{DB_HOST}"] = cfg.DBConnInfo.Host
-				placeholders["{DB_USER}"] = cfg.DBConnInfo.User
-				placeholders["{DB_PASS}"] = cfg.DBConnInfo.Pass
-				placeholders["{DB_DATABASE}"] = cfg.DBConnInfo.Database
-				placeholders["{DB_DRIVER}"] = cfg.DBConnInfo.Driver
+			var dbConnInfo *DBConnInfo
+			if cfg.AwsRdsDBCluster != nil {
+				dbConnInfo, err = infra.GetDBConnInfo(cfg.AwsRdsDBCluster.DBClusterIdentifier)
+				if err != nil {
+					return err
+				}
+			} else if cfg.AwsRdsDBInstance != nil {
+				dbConnInfo, err = infra.GetDBConnInfo(cfg.AwsRdsDBInstance.DBInstanceIdentifier)
+				if err != nil {
+					return err
+				}
+			} else {
+				dbConnInfo = cfg.DBConnInfo
+			}
 
-				if cfg.DBConnInfo.DisableTLS {
+			// When db is set, update the placeholders.
+			if dbConnInfo != nil {
+				placeholders["{DB_HOST}"] = dbConnInfo.Host
+				placeholders["{DB_USER}"] = dbConnInfo.User
+				placeholders["{DB_PASS}"] = dbConnInfo.Pass
+				placeholders["{DB_DATABASE}"] = dbConnInfo.Database
+				placeholders["{DB_DRIVER}"] = dbConnInfo.Driver
+
+				if dbConnInfo.DisableTLS {
 					placeholders["{DB_DISABLE_TLS}"] = "true"
 				} else {
 					placeholders["{DB_DISABLE_TLS}"] = "false"
@@ -546,15 +254,18 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			// When cache cluster is set, set the host and port.
 			if cfg.AwsElasticCacheCluster != nil {
-				cacheCluster := cfg.AwsElasticCacheCluster.result
+				cacheCluster, err := infra.GetAwsElasticCacheCluster(cfg.AwsElasticCacheCluster.CacheClusterId)
+				if err != nil {
+					return err
+				}
 
 				var cacheHost string
 				if cacheCluster.ConfigurationEndpoint != nil {
 					// Works for memcache.
-					cacheHost = fmt.Sprintf("%s:%d", *cacheCluster.ConfigurationEndpoint.Address, *cacheCluster.ConfigurationEndpoint.Port)
+					cacheHost = fmt.Sprintf("%s:%d", cacheCluster.ConfigurationEndpoint.Address, cacheCluster.ConfigurationEndpoint.Port)
 				} else if len(cacheCluster.CacheNodes) > 0 {
 					// Works for redis.
-					cacheHost = fmt.Sprintf("%s:%d", *cacheCluster.CacheNodes[0].Endpoint.Address, *cacheCluster.CacheNodes[0].Endpoint.Port)
+					cacheHost = fmt.Sprintf("%s:%d", cacheCluster.CacheNodes[0].Endpoint.Address, cacheCluster.CacheNodes[0].Endpoint.Port)
 				} else {
 					return errors.New("Unable to determine cache host from cache cluster")
 				}
@@ -563,7 +274,12 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			// Append the Route53 Zones as an env var to be used by the service for maintaining A records when new tasks
 			// are spun up or down.
-			if len(zoneArecNames) > 0 {
+			if len(zones) > 0 {
+				zoneArecNames := make(map[string][]string)
+				for _, zone := range zones {
+					zoneArecNames[zone.ZoneId] = zone.Entries
+				}
+
 				dat, err := json.Marshal(zoneArecNames)
 				if err != nil {
 					return errors.Wrapf(err, "failed to json marshal zones")
@@ -675,15 +391,10 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		}
 
 		log.Printf("\t\t\tFamily: %s", *taskDefInput.Family)
-		log.Printf("\t\t\tExecutionRoleArn: %s", *taskDefInput.ExecutionRoleArn)
-
-		if taskDefInput.TaskRoleArn != nil {
-			log.Printf("\t\t\tTaskRoleArn: %s", *taskDefInput.TaskRoleArn)
-		}
 		if taskDefInput.NetworkMode != nil {
 			log.Printf("\t\t\tNetworkMode: %s", *taskDefInput.NetworkMode)
 		}
-		log.Printf("\t\t\tTaskDefinitions: %d", len(taskDefInput.ContainerDefinitions))
+		log.Printf("\t\t\tTask Definitions: %d", len(taskDefInput.ContainerDefinitions))
 
 		// If memory or cpu for the task is not set, need to compute from container definitions.
 		if (taskDefInput.Cpu == nil || *taskDefInput.Cpu == "") || (taskDefInput.Memory == nil || *taskDefInput.Memory == "") {
@@ -810,46 +521,44 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		// The execution role is the IAM role that executes ECS actions such as pulling the image and storing the
 		// application logs in cloudwatch.
 		if (taskDefInput.ExecutionRoleArn == nil || *taskDefInput.ExecutionRoleArn == "") && targetService.AwsEcsExecutionRole != nil {
-
-			// Find or create role for ExecutionRoleArn.
-			role, err := SetupIamRole(log, cfg, targetService.AwsEcsExecutionRole, targetService.AwsEcsExecutionRole.AttachRolePolicyArns...)
+			role, err := infra.GetAwsIamRole(targetService.AwsEcsExecutionRole.RoleName)
 			if err != nil {
 				return err
 			}
 
 			// Update the task definition with the execution role ARN.
-			log.Printf("\tAppend ExecutionRoleArn to task definition input for role %s.", *role.RoleName)
-			taskDefInput.ExecutionRoleArn = role.Arn
-
-			log.Printf("\t%s\tExecutionRoleArn updated.\n", Success)
+			log.Printf("\tAppend ExecutionRoleArn to task definition input for role %s.", role.RoleName)
+			taskDefInput.ExecutionRoleArn = aws.String(role.Arn)
 		}
 
 		// The task role is the IAM role used by the task itself to access other AWS Services. To access services
 		// like S3, SQS, etc then those permissions would need to be covered by the TaskRole.
 		if (taskDefInput.TaskRoleArn == nil || *taskDefInput.TaskRoleArn == "") && targetService.AwsEcsTaskRole != nil {
-
-			// Find or create role for TaskRoleArn.
-			// Use the default policy defined for the entire project for all services and functions.
-			role, err := SetupIamRole(log, cfg, targetService.AwsEcsTaskRole, *cfg.AwsIamPolicy.result.Arn)
+			role, err := infra.GetAwsIamRole(targetService.AwsEcsTaskRole.RoleName)
 			if err != nil {
 				return err
 			}
 
 			// Update the task definition with the task role ARN.
-			log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", *role.RoleName)
-			taskDefInput.TaskRoleArn = role.Arn
+			log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", role.RoleName)
+			taskDefInput.TaskRoleArn = aws.String(role.Arn)
 		}
 
 		log.Println("\tRegister new task definition.")
 		{
-			svc := ecs.New(cfg.AwsSession())
+			inputHash := getInputHash(taskDefInput)
+
+			svc := ecs.New(infra.AwsSession())
 
 			// Registers a new task.
 			res, err := svc.RegisterTaskDefinition(taskDefInput)
 			if err != nil {
 				return errors.Wrapf(err, "Failed to register task definition '%s'", *taskDefInput.Family)
 			}
-			taskDef = res.TaskDefinition
+			taskDef = &AwsEcsTaskDefinitionResult{
+				TaskDefinition: res.TaskDefinition,
+				InputHash:      inputHash,
+			}
 
 			log.Printf("\t\tRegistered: %s.", *taskDef.TaskDefinitionArn)
 			log.Printf("\t\t\tRevision: %d.", *taskDef.Revision)
@@ -857,191 +566,13 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			log.Printf("\t%s\tTask definition registered.\n", Success)
 		}
-
-		targetService.AwsEcsTaskDefinition.result = taskDef
 	}
 
-	// Step 8: Find the existing ECS service and check if it needs to be recreated
-	var ecsService *ecs.Service
-	{
-		svc := ecs.New(cfg.AwsSession())
-
-		ecsServiceName := targetService.AwsEcsService.ServiceName
-
-		// Try to find AWS ECS Service by name. This does not error on not found, but results are used to determine if
-		// the full creation process of a service needs to be executed.
-		{
-			log.Println("\tECS - Find Service")
-
-			// Find service by ECS cluster and service name.
-			res, err := svc.DescribeServices(&ecs.DescribeServicesInput{
-				Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
-				Services: []*string{aws.String(ecsServiceName)},
-			})
-			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != ecs.ErrCodeServiceNotFoundException {
-					return errors.Wrapf(err, "Failed to describe service '%s'", ecsServiceName)
-				}
-			} else if len(res.Services) > 0 {
-				ecsService = res.Services[0]
-
-				log.Printf("\t\tFound: %s.", *ecsService.ServiceArn)
-
-				// The desired number of instantiations of the task definition to keep running
-				// on the service. This value is specified when the service is created with
-				// CreateService, and it can be modified with UpdateService.
-				log.Printf("\t\t\tDesiredCount: %d.", *ecsService.DesiredCount)
-				// The number of tasks in the cluster that are in the PENDING state.
-				log.Printf("\t\t\tPendingCount: %d.", *ecsService.PendingCount)
-				// The number of tasks in the cluster that are in the RUNNING state.
-				log.Printf("\t\t\tRunningCount: %d.", *ecsService.RunningCount)
-
-				// The status of the service. The valid values are ACTIVE, DRAINING, or INACTIVE.
-				log.Printf("\t\t\tStatus: %s.", *ecsService.Status)
-
-				log.Printf("\t%s\tUsing ECS Service '%s'.\n", Success, ecsServiceName)
-			} else {
-				log.Printf("\t%s\tExisting ECS Service not found.\n", Success)
-			}
-		}
-
-		// Check to see if the service should be re-created instead of updated.
-		if ecsService != nil {
-			var (
-				recreateService bool
-				forceDelete     bool
-			)
-
-			if targetService.AwsEcsService.ForceRecreate {
-				// Flag was included to force recreate.
-				recreateService = true
-				forceDelete = true
-			} else if len(ecsELBs) > 0 && (ecsService.LoadBalancers == nil || len(ecsService.LoadBalancers) == 0) {
-				// Service was created without ELB and now ELB is enabled.
-				recreateService = true
-			} else if len(ecsELBs) == 0 && (ecsService.LoadBalancers != nil && len(ecsService.LoadBalancers) > 0) {
-				// Service was created with ELB and now ELB is disabled.
-				recreateService = true
-			} else if targetService.AwsSdPrivateDnsNamespace != nil && targetService.AwsSdPrivateDnsNamespace.Service != nil && (ecsService.ServiceRegistries == nil || len(ecsService.ServiceRegistries) == 0) {
-				// Service was created without Service Discovery and now Service Discovery is enabled.
-				recreateService = true
-			} else if (targetService.AwsSdPrivateDnsNamespace == nil || targetService.AwsSdPrivateDnsNamespace.Service == nil) && (ecsService.ServiceRegistries != nil && len(ecsService.ServiceRegistries) > 0) {
-				// Service was created with Service Discovery and now Service Discovery is disabled.
-				recreateService = true
-			}
-
-			// If determined from above that service needs to be recreated.
-			if recreateService {
-
-				// Needs to delete any associated services on ECS first before it can be recreated.
-				log.Println("ECS - Delete Service")
-
-				// The service cannot be stopped while it is scaled above 0.
-				if ecsService.DesiredCount != nil && *ecsService.DesiredCount > 0 {
-					log.Println("\t\tScaling service down to zero.")
-					_, err := svc.UpdateService(&ecs.UpdateServiceInput{
-						Cluster:      ecsService.ClusterArn,
-						Service:      ecsService.ServiceArn,
-						DesiredCount: aws.Int64(int64(0)),
-					})
-					if err != nil {
-						return errors.Wrapf(err, "Failed to update service '%s'", ecsService.ServiceName)
-					}
-
-					// It may take some time for the service to scale down, so need to wait.
-					log.Println("\t\tWait for the service to scale down.")
-					err = svc.WaitUntilServicesStable(&ecs.DescribeServicesInput{
-						Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
-						Services: aws.StringSlice([]string{*ecsService.ServiceArn}),
-					})
-					if err != nil {
-						return errors.Wrapf(err, "Failed to wait for service '%s' to enter stable state", *ecsService.ServiceName)
-					}
-				}
-
-				// Once task count is 0 for the service, then can delete it.
-				log.Println("\t\tDelete Service.")
-				res, err := svc.DeleteService(&ecs.DeleteServiceInput{
-					Cluster: ecsService.ClusterArn,
-					Service: ecsService.ServiceArn,
-
-					// If true, allows you to delete a service even if it has not been scaled down
-					// to zero tasks. It is only necessary to use this if the service is using the
-					// REPLICA scheduling strategy.
-					Force: aws.Bool(forceDelete),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to delete service '%s'", ecsService.ServiceName)
-				}
-				ecsService = res.Service
-
-				log.Println("\t\tWait for the service to be deleted.")
-				err = svc.WaitUntilServicesInactive(&ecs.DescribeServicesInput{
-					Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
-					Services: aws.StringSlice([]string{*ecsService.ServiceArn}),
-				})
-				if err != nil {
-					return errors.Wrapf(err, "Failed to wait for service '%s' to enter stable state", *ecsService.ServiceName)
-				}
-
-				// Manually mark the ECS has inactive since WaitUntilServicesInactive was executed.
-				ecsService.Status = aws.String("INACTIVE")
-
-				log.Printf("\t%s\tDelete Service.\n", Success)
-			}
-		}
-
-		targetService.AwsEcsService.result = ecsService
+	// Step 9: Find the existing ECS service and check if it needs to be recreated
+	ecsService, err := infra.setupAwsEcsService(log, ecsCluster, targetService.AwsEcsService, taskDef, vpc, securityGroup, sdService, elb)
+	if err != nil {
+		return err
 	}
-
-	// Step 9: If the service exists on ECS, update the service, else create a new service.
-	if ecsService != nil && *ecsService.Status != "INACTIVE" {
-		log.Println("\tECS - Update Service")
-
-		svc := ecs.New(cfg.AwsSession())
-
-		input, err := targetService.AwsEcsService.UpdateInput(targetService.AwsEcsCluster.ClusterName, *taskDef.TaskDefinitionArn)
-		if err != nil {
-			return err
-		}
-
-		updateRes, err := svc.UpdateService(input)
-		if err != nil {
-			return errors.Wrapf(err, "Failed to update service '%s'", *ecsService.ServiceName)
-		}
-		ecsService = updateRes.Service
-
-		log.Printf("\t%s\tUpdated ECS Service '%s'.\n", Success, *ecsService.ServiceName)
-	} else {
-
-		// If not service exists on ECS, then create it.
-		log.Println("\tECS - Create Service")
-		{
-			svc := ecs.New(cfg.AwsSession())
-
-			input, err := targetService.AwsEcsService.CreateInput(targetService.AwsEcsCluster.ClusterName, *taskDef.TaskDefinitionArn, subnetIds, securityGroupIds, ecsELBs, sdService)
-			if err != nil {
-				return err
-			}
-
-			createRes, err := svc.CreateService(input)
-
-			// If tags aren't enabled for the account, try the request again without them.
-			// https://aws.amazon.com/blogs/compute/migrating-your-amazon-ecs-deployment-to-the-new-arn-and-resource-id-format-2/
-			if err != nil && strings.Contains(err.Error(), "ARN and resource ID format must be enabled") {
-				input.Tags = nil
-				createRes, err = svc.CreateService(input)
-			}
-
-			if err != nil {
-				return errors.Wrapf(err, "Failed to create service '%s'", targetService.AwsEcsService.ServiceName)
-			}
-			ecsService = createRes.Service
-
-			log.Printf("\t%s\tCreated ECS Service '%s'.\n", Success, *ecsService.ServiceName)
-		}
-	}
-	targetService.AwsEcsService.result = ecsService
 
 	// Step 10: When static files are enabled to be to stored on S3, we need to upload all of them.
 	if targetService.StaticFilesDir != "" && targetService.StaticFilesS3Prefix != "" {
@@ -1054,7 +585,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				return errors.Wrapf(err, "Static directory '%s' does not exist.", staticDir)
 			}
 		} else {
-			err := SyncPublicS3Files(cfg.AwsSession(),
+			err := SyncPublicS3Files(infra.AwsSession(),
 				cfg.AwsS3BucketPublic.BucketName,
 				targetService.StaticFilesS3Prefix,
 				staticDir)
@@ -1087,7 +618,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			logGroupName := targetService.AwsCloudWatchLogGroup.LogGroupName
 
 			// Stream name generated by ECS for the awslogs driver.
-			logStreamName := fmt.Sprintf("ecs/%s/%s", *ecsService.ServiceName, taskId)
+			logStreamName := fmt.Sprintf("ecs/%s/%s", ecsService.ServiceName, taskId)
 
 			// Define S3 key prefix used to export the stream logs to.
 			s3KeyPrefix := filepath.Join(
@@ -1097,7 +628,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			var downloadPrefix string
 			{
-				svc := cloudwatchlogs.New(cfg.AwsSession())
+				svc := cloudwatchlogs.New(infra.AwsSession())
 
 				createRes, err := svc.CreateExportTask(&cloudwatchlogs.CreateExportTaskInput{
 					LogGroupName:        aws.String(logGroupName),
@@ -1135,7 +666,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			// If downloadPrefix is set, then get logs from corresponding file for service.
 			var logLines []string
 			if downloadPrefix != "" {
-				svc := s3.New(cfg.AwsSession())
+				svc := s3.New(infra.AwsSession())
 
 				var s3Keys []string
 				err := svc.ListObjectsPages(&s3.ListObjectsInput{
@@ -1185,7 +716,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		// Helper method to display tasks errors that failed to start while we wait for the service to stable state.
 		taskLogLines := make(map[string][]string)
 		checkTasks := func() (bool, error) {
-			svc := ecs.New(cfg.AwsSession())
+			svc := ecs.New(infra.AwsSession())
 
 			clusterName := targetService.AwsEcsCluster.ClusterName
 			serviceName := targetService.AwsEcsService.ServiceName
@@ -1276,7 +807,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			// If the number of stopped tasks with the current task def match the desired count for the service,
 			// then we no longer need to continue to check the status of the tasks.
-			if stoppedCnt == *ecsService.DesiredCount {
+			if stoppedCnt == ecsService.DesiredCount {
 				return true, nil
 			}
 
@@ -1307,13 +838,13 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 		// Use the AWS ECS method to check for the service to be stable.
 		go func() {
-			svc := ecs.New(cfg.AwsSession())
+			svc := ecs.New(infra.AwsSession())
 			err := svc.WaitUntilServicesStable(&ecs.DescribeServicesInput{
-				Cluster:  targetService.AwsEcsCluster.result.ClusterArn,
-				Services: aws.StringSlice([]string{*ecsService.ServiceArn}),
+				Cluster:  aws.String(ecsCluster.ClusterArn),
+				Services: aws.StringSlice([]string{ecsService.ServiceArn}),
 			})
 			if err != nil {
-				checkErr <- errors.Wrapf(err, "Failed to wait for service '%s' to enter stable state", *ecsService.ServiceName)
+				checkErr <- errors.Wrapf(err, "Failed to wait for service '%s' to enter stable state", ecsService.ServiceName)
 			} else {
 				// All done.
 				checkErr <- nil
