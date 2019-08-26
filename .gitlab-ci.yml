@@ -34,10 +34,12 @@ cache:
   <<: *job_tmpl
   script:
     - 'go install ./build/cicd'
+    - 'which cicd'
     - 'cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
       - /go/bin/cicd
+      - /go/pkg
     expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
