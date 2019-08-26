@@ -33,27 +33,28 @@ cache:
 .setup_tmpl: &setup_tmpl
   <<: *job_tmpl
   script:
-    - 'go build -o cicd-${CI_COMMIT_SHORT_SHA} ./build/cicd'
+    - 'go build -o cicd ./build/cicd'
     - './cicd --env=${TARGET_ENV} deploy infrastructure'
   artifacts:
     paths:
-      - cicd-${CI_COMMIT_SHORT_SHA}
+      - cicd
     expire_in: 1 day
 
 .migrate_tmpl: &migrate_tmpl
   <<: *job_tmpl
   script:
-    - './cicd-${CI_COMMIT_SHORT_SHA} --env=${TARGET_ENV} schema migrate'
+    - './cicd --env=${TARGET_ENV} schema migrate'
 
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
   script:
-    - './cicd-${CI_COMMIT_SHORT_SHA} --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
+    - './cicd --env=${TARGET_ENV} build ${TARGET_TYPE} --name=${TARGET_REF}'
 
 .deploy_tmpl: &deploy_tmpl
   <<: *job_tmpl
   script:
-    - './cicd-${CI_COMMIT_SHORT_SHA} --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
+    - 'echo $PWD && ls .'
+    - './cicd --env=${TARGET_ENV} deploy ${TARGET_TYPE} --name=${TARGET_REF}'
 
 infra:setup:prod:
   <<: *setup_tmpl
