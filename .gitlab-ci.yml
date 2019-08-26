@@ -48,7 +48,6 @@ cache:
   artifacts:
     paths:
       - cicd
-      - vendor
 
 .build_tmpl: &build_tmpl
   <<: *job_tmpl
@@ -66,7 +65,6 @@ cache:
   artifacts:
     paths:
       - cicd
-      - vendor
 
 infra:setup:prod:
   <<: *setup_tmpl
