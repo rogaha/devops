@@ -48,7 +48,7 @@ ENTRYPOINT ["fresh", "-c", "/runner.conf"]
 # LAYER: TESTER - Run all the unittets for the project.
 FROM dev AS tester
 
-
+COPY --from=dev /project/build/vendor /project/build/vendor
 
 # Run the tests for the service being built.
 RUN go test -mod=/project/build/vendor -v ./...
