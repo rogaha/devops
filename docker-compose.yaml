@@ -36,13 +36,13 @@ services:
     entrypoint: redis-server --appendonly yes
 
   web-api:
-    image: devops/examples/go-web-api:latest
+    image: devops/examples/aws-ecs-go-web-api:latest
     build:
       context: .
       target: dev
-      dockerfile: examples/go-web-api/Dockerfile
+      dockerfile: examples/aws-ecs-go-web-api/Dockerfile
       args:
-        service: 'go-web-api'
+        service: 'aws-ecs-go-web-api'
     volumes:
       - ./:/go/src/gitlab.com/geeks-accelerator/oss/devops
     ports:

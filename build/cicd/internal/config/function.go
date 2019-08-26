@@ -15,7 +15,7 @@ type Function = string
 
 var (
 	FunctionDatadogLogcollector = "datadog-logcollector"
-	//FunctionGoWebApi            = "go-web-api"
+	//FunctionGoWebApi            = "aws-ecs-go-web-api"
 )
 
 // List of function names used by main.go for help and append the functions to config.

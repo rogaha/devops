@@ -56,7 +56,7 @@ configuration for AWS resources and handles executing that configuration for you
 2. [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) - An example implementation of the 
 _devdeploy_ package that includes configuration for two example applications: 
 
-    * [Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/go-web-api) - An API service 
+    * [Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) - An API service 
     written in GO that is deployed to [AWS Fargate](https://aws.amazon.com/fargate/) with built in support for HTTPS.
     
         AWS Fargate is a compute engine for Amazon ECS that allows you to run containers without having to manage servers or 
@@ -144,7 +144,7 @@ Additional functions can easily be defined here.
 
 * `service.go` - Defines your services that will be deployed to AWS Fargate. This includes settings for your AWS ECS 
 Cluster, the specific service and task definitions. The code as one service defined, 
-[Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/go-web-api). Additional 
+[Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api). Additional 
 services can easily be defined here.  
 
 * `schema.go` - Handles execution of schema migrations for target the deployment environment. Database credentials are 

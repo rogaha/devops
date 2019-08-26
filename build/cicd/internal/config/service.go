@@ -19,7 +19,7 @@ import (
 type Service = string
 
 var (
-	ServiceGoWebApi = "go-web-api"
+	ServiceGoWebApi = "aws-ecs-go-web-api"
 )
 
 // List of service names used by main.go for help and append the services to config.
