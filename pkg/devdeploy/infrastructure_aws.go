@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pborman/uuid"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -32,6 +31,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/servicediscovery"
 	"github.com/bobesa/go-domain-util/domainutil"
 	"github.com/google/go-cmp/cmp"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 )
@@ -1405,7 +1405,7 @@ func (infra *Infrastructure) SaveDbConnInfo(name string, dBConnInfo *DBConnInfo)
 	sm := secretsmanager.New(infra.awsCredentials.Session())
 
 	_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
-		SecretId:         aws.String(dbSecretId),
+		SecretId:     aws.String(dbSecretId),
 		SecretBinary: dat,
 	})
 	if err != nil {
@@ -1415,7 +1415,7 @@ func (infra *Infrastructure) SaveDbConnInfo(name string, dBConnInfo *DBConnInfo)
 			log.Printf("\tCreating new entry in AWS Secret Manager using secret ID %s\n", dbSecretId)
 
 			_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
-				Name:     aws.String(dbSecretId),
+				Name:         aws.String(dbSecretId),
 				SecretBinary: dat,
 			})
 			if err != nil {

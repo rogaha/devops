@@ -73,7 +73,7 @@ func BuildServiceForTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 	req := &BuildDockerRequest{
 		Env:         cfg.Env,
 		ProjectName: cfg.ProjectName,
-		Name: targetService.Name,
+		Name:        targetService.Name,
 
 		ReleaseImage: releaseImage,
 

@@ -20,7 +20,7 @@ import (
 type BuildDockerRequest struct {
 	Env         string `validate:"oneof=dev stage prod" example:"dev"`
 	ProjectName string ` validate:"omitempty" example:"example-project"`
-	Name string `validate:"required" example:"web-api"`
+	Name        string `validate:"required" example:"web-api"`
 
 	ReleaseImage string `validate:"required" example:""`
 

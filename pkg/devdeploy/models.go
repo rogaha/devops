@@ -74,11 +74,11 @@ func (db DBConnInfo) URL() string {
 // ProjectFunction configures a function for build and deploy.
 type ProjectFunction struct {
 	// Required flags.
-	Name       string `validate:"required" example:"web-api"`
+	Name           string `validate:"required" example:"web-api"`
 	Dockerfile     string `validate:"required" example:"./cmd/web-api/Dockerfile"`
 	DockerBuildDir string `validate:"required"`
 	ReleaseTag     string `validate:"required"`
-	CodeDir      string `validate:"required"`
+	CodeDir        string `validate:"required"`
 	CodeS3Key      string `validate:"required"`
 	CodeS3Bucket   string `validate:"required"`
 
@@ -101,11 +101,11 @@ type ProjectFunction struct {
 // ProjectService configures a service for build and deploy.
 type ProjectService struct {
 	// Required flags.
-	Name    string `validate:"required" example:"web-api"`
+	Name           string `validate:"required" example:"web-api"`
 	Dockerfile     string `validate:"required" example:"./cmd/web-api/Dockerfile"`
 	DockerBuildDir string `validate:"required"`
 	ReleaseTag     string `validate:"required"`
-	CodeDir      string `validate:"required"`
+	CodeDir        string `validate:"required"`
 
 	// AwsEcsCluster defines the name of the ecs cluster and the details needed to create doesn't exist.
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
@@ -2580,7 +2580,7 @@ func (m *AwsLambdaFunction) UpdateConfigurationInput(vpc *AwsEc2VpcResult, secur
 
 	if vpc != nil {
 		input.VpcConfig = &lambda.VpcConfig{
-			SubnetIds:        aws.StringSlice(vpc.SubnetIds),
+			SubnetIds: aws.StringSlice(vpc.SubnetIds),
 		}
 
 		if securityGroup != nil {

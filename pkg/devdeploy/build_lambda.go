@@ -25,7 +25,7 @@ func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *ProjectFu
 	req := &BuildDockerRequest{
 		Env:         cfg.Env,
 		ProjectName: cfg.ProjectName,
-		Name: targetFunc.Name,
+		Name:        targetFunc.Name,
 
 		ReleaseImage: filepath.Join(cfg.ProjectName, targetFunc.Name) + ":" + targetFunc.ReleaseTag,
 

@@ -163,7 +163,7 @@ func (i *Infrastructure) Save(log *log.Logger) error {
 			log.Printf("\tCreating new entry in AWS Secret Manager using secret ID %s\n", i.secretID)
 
 			_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
-				Name:     aws.String(i.secretID),
+				Name:         aws.String(i.secretID),
 				SecretBinary: dat,
 			})
 			if err != nil {
@@ -206,7 +206,7 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 		if err := infra.Save(log); err != nil {
 			log.Fatalf("%+v", err)
 		}
-	} ()
+	}()
 
 	var buildEnv bool
 	for _, opt := range opts {

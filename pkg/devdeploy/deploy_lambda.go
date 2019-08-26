@@ -56,7 +56,7 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 	}
 
 	var (
-		vpc *AwsEc2VpcResult
+		vpc           *AwsEc2VpcResult
 		securityGroup *AwsEc2SecurityGroupResult
 	)
 	if target.EnableVPC {

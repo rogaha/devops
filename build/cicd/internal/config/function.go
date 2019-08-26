@@ -26,9 +26,9 @@ var FunctionNames = []Function{
 func NewFunction(funcName string, cfg *devdeploy.Config) (*devdeploy.ProjectFunction, error) {
 
 	ctx := &devdeploy.ProjectFunction{
-		Name: funcName,
-		CodeDir: filepath.Join(cfg.ProjectRoot, "examples", funcName),
-		DockerBuildDir: cfg.ProjectRoot,
+		Name:               funcName,
+		CodeDir:            filepath.Join(cfg.ProjectRoot, "examples", funcName),
+		DockerBuildDir:     cfg.ProjectRoot,
 		DockerBuildContext: ".",
 
 		// Set the release tag for the image to use include env + function name + commit hash/tag.

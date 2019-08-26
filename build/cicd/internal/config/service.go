@@ -34,14 +34,13 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 	// New service context.
 	ctx := &devdeploy.ProjectService{
 		Name:               serviceName,
-		CodeDir:         filepath.Join(cfg.ProjectRoot, "examples", serviceName),
-		DockerBuildDir: cfg.ProjectRoot,
+		CodeDir:            filepath.Join(cfg.ProjectRoot, "examples", serviceName),
+		DockerBuildDir:     cfg.ProjectRoot,
 		DockerBuildContext: ".",
 
 		// Set the release tag for the image to use include env + service name + commit hash/tag.
 		ReleaseTag: devdeploy.GitLabCiReleaseTag(cfg.Env, serviceName),
 	}
-
 
 	// =========================================================================
 	// Context settings based on target env.
@@ -54,7 +53,6 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 	} else {
 		ctx.EnableHTTPS = false
 	}
-
 
 	// =========================================================================
 	// Shared details that could be applied to all task definitions.
@@ -225,7 +223,6 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 			ctx.ServiceHostPrimary = fmt.Sprintf("api.%s.devops.example.saasstartupkit.com", cfg.Env)
 		}
 
-
 		// Defined a container definition for the specific service.
 		container1 := &ecs.ContainerDefinition{
 			Name:      aws.String(ctx.Name),
@@ -307,8 +304,8 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 
 		// Define the full task definition for the service.
 		taskDef := &ecs.RegisterTaskDefinitionInput{
-			Family:           aws.String(ctx.Name),
-			NetworkMode:      aws.String("awsvpc"),
+			Family:      aws.String(ctx.Name),
+			NetworkMode: aws.String("awsvpc"),
 			ContainerDefinitions: []*ecs.ContainerDefinition{
 				// Include the single container definition for the service. Additional definitions could be added
 				// here like one for datadog.

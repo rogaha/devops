@@ -83,7 +83,7 @@ func (cfg *Config) ProjectNameCamel() string {
 func (cfg *Config) GetDBConnInfo(infra *Infrastructure) (*DBConnInfo, error) {
 	var (
 		dbConnInfo *DBConnInfo
-		err error
+		err        error
 	)
 	if cfg.AwsRdsDBCluster != nil {
 		dbConnInfo, err = infra.GetDBConnInfo(cfg.AwsRdsDBCluster.DBClusterIdentifier)

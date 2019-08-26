@@ -337,7 +337,7 @@ func main() {
 		}
 
 		// Generate a unique list of hostnames.
-		var hosts []string
+		var hosts = []string{primaryHostname}
 		for _, h := range cfg.Service.HostNames {
 			h = strings.TrimSpace(h)
 			if h != "" && h != primaryHostname {
