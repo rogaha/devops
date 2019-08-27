@@ -70,6 +70,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 
 	// When the dockerFile is multistage, caching can be applied. Scan the dockerFile for the first stage.
 	// FROM golang:1.12.6-alpine3.9 AS build_base
+	dockerFilebuildArgs := make(map[string]string)
 	var buildBaseImageTag string
 	{
 		file, err := os.Open(dockerPath)
@@ -103,6 +104,20 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 				stageLines = append(stageLines, line)
 			} else if buildStageName != "" {
 				stageLines = append(stageLines, line)
+			}
+
+			if strings.HasPrefix(lineLower, "arg ") {
+				vals := strings.Split(line, "=")
+
+				argKey := strings.TrimSpace(strings.Split(vals[0], " ")[1])
+
+				// Build args are option to set a default value.
+				var argVal string
+				if len(vals) > 1 {
+					argVal = strings.TrimSpace(vals[1])
+				}
+
+				dockerFilebuildArgs[argKey] = argVal
 			}
 		}
 
@@ -139,6 +154,17 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 		}
 	}
 
+	// If the Dockerfile contains an optional build arg of GOPROXY then try to copy value from env.
+	if _, ok := dockerFilebuildArgs["GOPROXY"]; ok {
+		// Check to see if the value is set as an env var.
+		if ev := os.Getenv("GOPROXY"); ev != "" {
+			// Only add the build arg if one wasn't specifically defined.
+			if _, ok := req.BuildArgs["GOPROXY"]; !ok {
+				req.BuildArgs["GOPROXY"] = ev
+			}
+		}
+	}
+
 	var cmds [][]string
 
 	// Enabling caching of the first build stage defined in the dockerFile.
@@ -160,14 +186,19 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 
 		cmds = append(cmds, []string{"docker", "pull", buildBaseImage})
 
-		cmds = append(cmds, []string{
+		baseBuildCmd := []string{
 			"docker", "build",
 			"--file=" + dockerFile,
 			"--cache-from", buildBaseImage,
 			"-t", buildBaseImage,
 			"--target", buildStageName,
-			req.DockerBuildContext,
-		})
+		}
+		for k, v := range req.BuildArgs {
+			baseBuildCmd = append(baseBuildCmd, "--build-arg", k+"="+v)
+		}
+		baseBuildCmd = append(baseBuildCmd, req.DockerBuildContext)
+
+		cmds = append(cmds, baseBuildCmd)
 
 		if pushTargetImg {
 			cmds = append(cmds, []string{"docker", "push", buildBaseImage})

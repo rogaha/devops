@@ -694,7 +694,7 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					return nil, errors.Wrapf(err, "Failed to list cloudfront distributions for s3 bucket '%s'", bucketName)
 				}
 
-				var curDist *cloudfront.DistributionSummary
+				var existingId string
 				for _, d := range res.DistributionList.Items {
 					if d.Origins == nil || len(d.Origins.Items) == 0 {
 						continue
@@ -709,12 +709,13 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					}
 
 					if found {
-						curDist = d
+						existingId = *d.Id
 						break
 					}
 				}
 
-				if curDist == nil {
+				var curDist *cloudfront.Distribution
+				if existingId == "" {
 					allowedMethods := &cloudfront.AllowedMethods{
 						Items: aws.StringSlice(s3Bucket.CloudFront.CachedMethods),
 					}
@@ -756,18 +757,28 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 					targetOriginId := *input.DistributionConfig.DefaultCacheBehavior.TargetOriginId
 
-					_, err = cf.CreateDistribution(input)
+					res, err := cf.CreateDistribution(input)
 					if err != nil {
 						if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != cloudfront.ErrCodeDistributionAlreadyExists) {
 							return nil, errors.Wrapf(err, "Failed to create cloudfront distribution '%s'", targetOriginId)
 						}
 					}
+					curDist = res.Distribution
 
 					// If no bucket found during create, create new one.
 					log.Printf("\t\t\t\t\t%s created: %s.", domainName, targetOriginId)
 				} else {
 					// If bucket found during create, returns it.
 					log.Printf("\t\t\t\t\tFound: %s.", domainName)
+
+					res, err := cf.GetDistribution(&cloudfront.GetDistributionInput{
+						Id: aws.String(existingId),
+					})
+					if err != nil {
+						return nil, err
+					}
+
+					curDist = res.Distribution
 				}
 
 				// The status of the distribution.
@@ -790,10 +801,8 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					if err != nil {
 						return nil, err
 					}
+					curDist = res.Distribution
 
-					curDist.Status = res.Distribution.Status
-					curDist.DomainName = res.Distribution.DomainName
-					curDist.ARN = res.Distribution.ARN
 					s3Bucket.CloudFront.DistributionConfig = res.Distribution.DistributionConfig
 
 					// The status of the distribution.
