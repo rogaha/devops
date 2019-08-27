@@ -432,7 +432,7 @@ instance will be a dedicated host since we need it always up and running, thus i
 sudo chkconfig docker on
 sudo service docker start
 sudo usermod -a -G docker $USER
-sudo docker run -d -p8081:8081 --restart always goproxy/goproxy 
+sudo docker run -d -p8081:8081 --restart always goproxy/goproxy -proxy https://goproxy.io
 ``` 
 
 Get the public DNS name for the instance. This will be used by runners to access `goproxy` running on the bastion.
