@@ -27,6 +27,7 @@ cache:
 before_script:
   - echo $GOPROXY
   - echo $GO111MODULE
+  - export GOPATH=$PWD
 
 # Everything should get this, whether through subtemplates or explicitly
 # embedded in a job.

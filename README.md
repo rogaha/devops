@@ -437,7 +437,7 @@ sudo docker run -d -p8081:8081 --restart always goproxy/goproxy
 
 Get the public DNS name for the instance. This will be used by runners to access `goproxy` running on the bastion.
 ```bash
-echo $(curl -s http://169.254.169.254/latest/meta-data/public-hostname)":8081"
+echo "http://"+$(curl -s http://169.254.169.254/latest/meta-data/public-hostname)":8081"
 ```
 
 Open up `/etc/gitlab-runner/config.toml` in `vim` to edit the configuration file. In the `[[runners]]` section add the 
@@ -452,13 +452,16 @@ Example after update:
   name = "oss-devops-dev"
   url = "https://gitlab.com/"
   executor = "docker+machine"
-  environment = ["GOPROXY=ec2-52-36-105-172.us-west-2.compute.amazonaws.com:8081"]
+  environment = ["GOPROXY=http://ec2-52-36-105-172.us-west-2.compute.amazonaws.com:8081"]
 ```
 
 Restart the gitlab runner: 
 ```bash
 sudo gitlab-runner restart
 ```
+
+Add port `8081` to the AWS security group `gitlab-runner` using the same process outlined in step 9.
+
 
 17. Setup complete. You should now be able navigate back to the `CI / CD` under `Settings` for your GitLab repo and see 
 the newly deployed instance listed as an active runner. 
