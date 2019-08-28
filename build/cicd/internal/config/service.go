@@ -29,10 +29,11 @@ const (
 	// When not enabled, tasks will be auto assigned a public IP. As ECS tasks for the service are launched/terminated,
 	// the task will update the hostnames defined for the service in Route53 to either add/remove its public IP. This
 	// option is good for services that only need one container running.
-	EnableServiceElb = true
+	EnableServiceElb = false
 
-	// EnableServiceAutoscaling will enable all services to be deployed with an application scaling policy.
-	EnableServiceAutoscaling = true
+	// EnableServiceAutoscaling will enable all services to be deployed with an application scaling policy. This should
+	// typically be enabled for front end services that have an ELB enabled. 
+	EnableServiceAutoscaling = false
 )
 
 // Service define the name of a service.
