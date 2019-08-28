@@ -2,6 +2,8 @@ package devdeploy
 
 import (
 	"encoding/json"
+	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
+	"github.com/aws/aws-sdk-go/service/cloudwatchevents"
 	"net/url"
 	"time"
 
@@ -96,6 +98,9 @@ type ProjectFunction struct {
 	DockerBuildTargetLayer string `validate:"omitempty" example:"lambda"`
 	DockerBuildArgs        map[string]string
 	EnableVPC              bool `validate:"omitempty"`
+
+	// List of Cloudwatch event targets.
+	AwsCloudwatchEventRules []*AwsCloudwatchEventRule `validate:"omitempty"`
 }
 
 // ProjectService configures a service for build and deploy.
@@ -130,6 +135,9 @@ type ProjectService struct {
 
 	// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
 	AwsElbLoadBalancer *AwsElbLoadBalancer `validate:"omitempty"`
+
+	// AwsAppAutoscalingPolicy defines if the service should use an autoscaling policy applied.
+	AwsAppAutoscalingPolicy *AwsAppAutoscalingPolicy `validate:"omitempty"`
 
 	// AwsSdPrivateDnsNamespace defines the name of the service discovery group and the details needed to create if
 	// it does not exist.
@@ -1917,10 +1925,6 @@ type AwsElbListenerResult struct {
 	// The protocol for connections from clients to the load balancer.
 	Protocol string
 
-	// [HTTPS or TLS listener] The security policy that defines which ciphers and
-	// protocols are supported. The default is the current predefined security policy.
-	SslPolicy string
-
 	// The md5 hash of the input used to create the Listener.
 	InputHash string
 }
@@ -1939,24 +1943,24 @@ type AwsElbCertificate struct {
 
 // AwsElbAction defines information about an action derived from *elbv2.Action.
 type AwsElbAction struct {
-	// The order for the action. This value is required for rules with multiple
-	// actions. The action with the lowest value for order is performed first. The
-	// final action to be performed must be a forward or a fixed-response action.
-	Order int64
-
-	// [Application Load Balancer] Information for creating a redirect action. Specify
-	// only when Type is redirect.
-	RedirectConfig *AwsElbRedirectActionConfig
-
-	// The Amazon Resource Name (ARN) of the target group. Specify only when Type
-	// is forward.
-	TargetGroupArn string
-
 	// The type of action. Each rule must include exactly one of the following types
 	// of actions: forward, fixed-response, or redirect.
 	//
 	// Type is a required field
 	Type string
+
+	// The Amazon Resource Name (ARN) of the target group. Specify only when Type
+	// is forward.
+	TargetGroupArn string
+
+	// [Application Load Balancer] Information for creating a redirect action. Specify
+	// only when Type is redirect.
+	RedirectConfig *AwsElbRedirectActionConfig
+
+	// The order for the action. This value is required for rules with multiple
+	// actions. The action with the lowest value for order is performed first. The
+	// final action to be performed must be a forward or a fixed-response action.
+	Order *int64
 }
 
 // AwsElbRedirectActionConfig defines information about an action derived from *elbv2.RedirectActionConfig.
@@ -2008,7 +2012,6 @@ func (m *AwsElbListener) Input(elb *AwsElbLoadBalancerResult) (*elbv2.CreateList
 		for _, c := range m.Certificates {
 			input.Certificates = append(input.Certificates, &elbv2.Certificate{
 				CertificateArn: aws.String(c.CertificateArn),
-				IsDefault:      aws.Bool(c.IsDefault),
 			})
 		}
 	}
@@ -2017,7 +2020,6 @@ func (m *AwsElbListener) Input(elb *AwsElbLoadBalancerResult) (*elbv2.CreateList
 		for _, a := range m.DefaultActions {
 
 			ia := &elbv2.Action{
-				Order:          aws.Int64(a.Order),
 				TargetGroupArn: aws.String(a.TargetGroupArn),
 				Type:           aws.String(a.Type),
 			}
@@ -2038,6 +2040,9 @@ func (m *AwsElbListener) Input(elb *AwsElbLoadBalancerResult) (*elbv2.CreateList
 	}
 
 	if m.PreCreate != nil {
+		if elb == nil {
+			elb = &AwsElbLoadBalancerResult{}
+		}
 
 		if err := m.PreCreate(elb, input); err != nil {
 			return input, err
@@ -2232,6 +2237,94 @@ func (m *AwsElbTargetGroup) Input(vpc *AwsEc2VpcResult) (*elbv2.CreateTargetGrou
 
 	if m.PreCreate != nil {
 		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsAppAutoscalingPolicy defines the details needed to create an application autoscaling policy.
+type AwsAppAutoscalingPolicy struct {
+	// The name of the scaling policy.
+	PolicyName string
+
+	// The policy type. The following policy types are supported:
+	// * TargetTrackingScaling
+	// * StepScaling—Not
+	//
+	// For more information, see Step Scaling Policies for Application Auto Scaling
+	// (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-step-scaling-policies.html)
+	// and Target Tracking Scaling Policies for Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-target-tracking.html)
+	// in the Application Auto Scaling User Guide.
+	PolicyType string
+
+	// A step scaling policy. This parameter is required if you are creating a policy and the policy type is StepScaling.
+	StepScalingPolicyConfiguration *applicationautoscaling.StepScalingPolicyConfiguration `type:"structure"`
+
+	// A target tracking scaling policy. Includes support for predefined or customized metrics. This parameter is
+	// required if you are creating a policy and the policy type is TargetTrackingScaling.
+	TargetTrackingScalingPolicyConfiguration *applicationautoscaling.TargetTrackingScalingPolicyConfiguration `type:"structure"`
+
+	// The minimum value to scale to in response to a scale-in event. MinCapacity
+	// is required to register a scalable target.
+	MinCapacity int64
+
+	// The maximum value to scale to in response to a scale-out event. MaxCapacity
+	// is required to register a scalable target.
+	MaxCapacity int64
+
+	// Optional to provide additional details to the create input.
+	PrePut func(input *applicationautoscaling.PutScalingPolicyInput) error `json:"-"`
+
+	// Optional to provide additional details to the create input.
+	PreRegisterTarget func(input *applicationautoscaling.RegisterScalableTargetInput) error `json:"-"`
+}
+
+// AwsAppAutoscalingPolicyResult defines information about an application autoscaling policy.
+type AwsAppAutoscalingPolicyResult struct {
+	// The name of the policy.
+	PolicyName string
+
+	// The policy type.
+	PolicyType string
+
+	// The Amazon Resource Name (ARN) of the policy.
+	PolicyARN string
+
+	// The md5 hash of the input used to create the Policy.
+	InputHash string
+}
+
+// Input returns the AWS input for applicationautoscaling.PutScalingPolicy.
+func (m *AwsAppAutoscalingPolicy) PutInput() (*applicationautoscaling.PutScalingPolicyInput, error) {
+
+	input := &applicationautoscaling.PutScalingPolicyInput{
+		PolicyName:                               aws.String(m.PolicyName),
+		PolicyType:                               aws.String(m.PolicyType),
+		StepScalingPolicyConfiguration:           m.StepScalingPolicyConfiguration,
+		TargetTrackingScalingPolicyConfiguration: m.TargetTrackingScalingPolicyConfiguration,
+	}
+
+	if m.PrePut != nil {
+		if err := m.PrePut(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// Input returns the AWS input for applicationautoscaling.PutScalingPolicy.
+func (m *AwsAppAutoscalingPolicy) RegisterTargetInput() (*applicationautoscaling.RegisterScalableTargetInput, error) {
+
+	input := &applicationautoscaling.RegisterScalableTargetInput{
+		MinCapacity: aws.Int64(m.MinCapacity),
+		MaxCapacity: aws.Int64(m.MaxCapacity),
+	}
+
+	if m.PreRegisterTarget != nil {
+		if err := m.PreRegisterTarget(input); err != nil {
 			return input, err
 		}
 	}
@@ -2458,13 +2551,13 @@ type AwsLambdaFunction struct {
 	PreUpdateCode func(input *lambda.UpdateFunctionCodeInput) error `json:"-"`
 
 	// Optional to provide additional details to the update configuration input.
-	PreUpdateConfiguration func(input *lambda.UpdateFunctionConfigurationInput) error `json:"-"`
+	PreUpdateConfiguration func(input *lambda.UpdateFunctionConfigurationInput, existing *lambda.FunctionConfiguration) error `json:"-"`
 
 	// Optional to update the Environment before create function or updateConfiguration is executed.
 	UpdateEnvironment func(vars map[string]string) error
 
-	// contains filtered or unexported fields
-	//result *lambda.FunctionConfiguration
+	// Optional to defined a Cloudwatch Event rule that will trigger this lambda.
+	AwsCloudwatchEventRule *AwsCloudwatchEventRule
 }
 
 // CreateInput returns the AWS input for lambda.CreateFunction.
@@ -2548,7 +2641,7 @@ func (m *AwsLambdaFunction) UpdateCodeInput(codeS3Bucket, codeS3Key string) (*la
 }
 
 // UpdateConfigurationInput returns the AWS input for lambda.UpdateFunctionConfigurationInput.
-func (m *AwsLambdaFunction) UpdateConfigurationInput(vpc *AwsEc2VpcResult, securityGroup *AwsEc2SecurityGroupResult) (*lambda.UpdateFunctionConfigurationInput, error) {
+func (m *AwsLambdaFunction) UpdateConfigurationInput(vpc *AwsEc2VpcResult, securityGroup *AwsEc2SecurityGroupResult, existingConfig *lambda.FunctionConfiguration) (*lambda.UpdateFunctionConfigurationInput, error) {
 
 	input := &lambda.UpdateFunctionConfigurationInput{
 		FunctionName: aws.String(m.FunctionName),
@@ -2591,10 +2684,170 @@ func (m *AwsLambdaFunction) UpdateConfigurationInput(vpc *AwsEc2VpcResult, secur
 	}
 
 	if m.PreUpdateConfiguration != nil {
-		if err := m.PreUpdateConfiguration(input); err != nil {
+		if err := m.PreUpdateConfiguration(input, existingConfig); err != nil {
 			return input, err
 		}
 	}
 
 	return input, nil
+}
+
+// AwsCloudwatchEventRule defines the details needed to create a Cloudwatch Event rule.
+type AwsCloudwatchEventRule struct {
+	// The name of the rule that you're creating or updating.
+	Name string
+
+	// A description of the rule.
+	Description string
+
+	// The event bus to associate with this rule. If you omit this, the default
+	// event bus is used.
+	EventBusName *string
+
+	// The event pattern. For more information, see Event Patterns (https://docs.aws.amazon.com/eventbridge/latest/userguide/eventbridge-and-event-patterns.html)
+	// in the Amazon EventBridge User Guide.
+	EventPattern string
+
+	// The Amazon Resource Name (ARN) of the IAM role associated with the rule.
+	RoleArn *string
+
+	// Or define a new role that will be associated with the rule.
+	IamRole *AwsIamRole
+
+	// The scheduling expression: for example, "cron(0 20 * * ? *)" or "rate(5 minutes)".
+	ScheduleExpression string
+
+	// The list of key-value pairs to associate with the rule.
+	Tags []Tag `type:"list"`
+
+	// List of targets to associated with the rule.
+	Targets []*AwsCloudwatchEventTarget
+
+	// Optional to provide additional details to the create input.
+	PrePut func(input *cloudwatchevents.PutRuleInput, existing *cloudwatchevents.Rule) error `json:"-"`
+}
+
+// Input returns the AWS input for cloudwatchevents.PutRule.
+func (m *AwsCloudwatchEventRule) Input(existingRule *cloudwatchevents.Rule) (*cloudwatchevents.PutRuleInput, error) {
+
+	input := &cloudwatchevents.PutRuleInput{
+		Name:         aws.String(m.Name),
+		Description:  aws.String(m.Description),
+		EventBusName: m.EventBusName,
+		EventPattern: aws.String(m.EventPattern),
+		State:        aws.String("enabled"),
+		RoleArn:      m.RoleArn,
+	}
+
+	if m.ScheduleExpression != "" {
+		input.ScheduleExpression = aws.String(m.ScheduleExpression)
+	}
+
+	input.Tags = []*cloudwatchevents.Tag{}
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &cloudwatchevents.Tag{
+			Key:   aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PrePut != nil {
+		if err := m.PrePut(input, existingRule); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsCloudwatchEventRuleResult defines information about a service derived from *cloudwatchevents.PutRuleOutput.
+type AwsCloudwatchEventRuleResult struct {
+	// The name of the service.
+	Name string
+
+	// The Amazon Resource Name (ARN) of the rul
+	Arn string
+
+	// The event bus to associate with this rule. If you omit this, the default
+	// event bus is used.
+	EventBusName *string
+
+	// List of targets to associated with the rule.
+	Targets map[string]*AwsCloudwatchEventTargetResult
+
+	// The md5 hash of the input used to create the TargetGroup.
+	InputHash string
+}
+
+// GetTarget returns *AwsCloudwatchEventTargetResult by id.
+func (res *AwsCloudwatchEventRuleResult) GetTarget(targetId string) (*AwsCloudwatchEventTargetResult, error) {
+	var (
+		result *AwsCloudwatchEventTargetResult
+		ok     bool
+	)
+	if res.Targets != nil {
+		result, ok = res.Targets[targetId]
+	}
+	if !ok {
+		return nil, errors.Errorf("No target configured for '%s'", targetId)
+	}
+	return result, nil
+}
+
+// AwsCloudwatchEventTarget defines the details needed to create a Cloudwatch Event target.
+type AwsCloudwatchEventTarget struct {
+
+	// The Amazon Resource Name (ARN) of the target.
+	Arn string
+
+	// The ID of the target.
+	Id string
+
+	// The Amazon Resource Name (ARN) of the IAM role to be used for this target
+	// when the rule is triggered. If one rule triggers multiple targets, you can
+	// use a different IAM role for each target.
+	RoleArn *string
+
+	// Or define a new role that will be associated with the rule.
+	IamRole *AwsIamRole
+
+	// Optional to provide additional details to the create input.
+	PrePut func(rule *AwsCloudwatchEventRuleResult, target *cloudwatchevents.Target, existing *cloudwatchevents.Target) error `json:"-"`
+}
+
+// Target returns the AWS target for cloudwatchevents.PutTargets.
+func (m *AwsCloudwatchEventTarget) Target(rule *AwsCloudwatchEventRuleResult, existingTarget *cloudwatchevents.Target) (*cloudwatchevents.Target, error) {
+
+	input := existingTarget
+
+	if input == nil {
+		input = &cloudwatchevents.Target{
+			RoleArn: m.RoleArn,
+		}
+	}
+	input.Arn = aws.String(m.Arn)
+	input.Id = aws.String(m.Id)
+
+	if m.PrePut != nil {
+		if rule == nil {
+			rule = &AwsCloudwatchEventRuleResult{}
+		}
+		if err := m.PrePut(rule, input, existingTarget); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsCloudwatchEventRuleResult defines information about a service derived from *cloudwatchevents.PutRuleOutput.
+type AwsCloudwatchEventTargetResult struct {
+	// The Amazon Resource Name (ARN) of the target.
+	Arn string
+
+	// The ID of the target.
+	Id string
+
+	// The md5 hash of the input used to create the TargetGroup.
+	InputHash string
 }

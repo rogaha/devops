@@ -1,6 +1,7 @@
 package devdeploy
 
 import (
+	"github.com/aws/aws-sdk-go/aws"
 	"log"
 
 	"github.com/aws/aws-sdk-go/service/lambda"
@@ -11,6 +12,7 @@ import (
 // 1. Find the AWS IAM role if defined.
 // 2. Find the AWS function if it exists.
 // 3. Create or update the code/configuration.
+// 4. Hookup any AWS Cloudwatch Event Rules.
 func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFunction) error {
 
 	log.Printf("Deploy function %s to environment %s\n", target.Name, cfg.Env)
@@ -81,6 +83,13 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 	if lambdaFunc != nil {
 		log.Printf("\t\tFound: %s", *lambdaFunc.FunctionArn)
 
+		cfgRes, err := lambdaSvc.GetFunctionConfiguration(&lambda.GetFunctionConfigurationInput{
+			FunctionName: aws.String(funcName),
+		})
+		if err != nil {
+			return errors.Wrapf(err, "Failed to get configuration for '%s'", funcName)
+		}
+
 		codeInput, err := target.AwsLambdaFunction.UpdateCodeInput(target.CodeS3Bucket, target.CodeS3Key)
 		if err != nil {
 			return err
@@ -92,7 +101,7 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 		lambdaFunc = codeRes
 		log.Printf("\t\tUpdated Code: %s", *lambdaFunc.FunctionArn)
 
-		configInput, err := target.AwsLambdaFunction.UpdateConfigurationInput(vpc, securityGroup)
+		configInput, err := target.AwsLambdaFunction.UpdateConfigurationInput(vpc, securityGroup, cfgRes)
 		if err != nil {
 			return err
 		}
@@ -117,6 +126,20 @@ func DeployLambdaToTargetEnv(log *log.Logger, cfg *Config, target *ProjectFuncti
 		}
 		lambdaFunc = createRes
 		log.Printf("\t\tCreated: %s", *lambdaFunc.FunctionArn)
+	}
+
+	// Hookup any defined Cloudwatch Event rules defined for the lambda function.
+	for _, eventRule := range target.AwsCloudwatchEventRules {
+		eventRule.Targets = append(eventRule.Targets, &AwsCloudwatchEventTarget{
+			Arn:     *lambdaFunc.FunctionArn,
+			Id:      *lambdaFunc.FunctionName,
+			RoleArn: lambdaFunc.Role,
+		})
+
+		_, err = infra.setupAwsCloudwatchEventRule(log, eventRule)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

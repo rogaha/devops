@@ -437,7 +437,7 @@ sudo docker run -d -p8081:8081 --restart always goproxy/goproxy -proxy https://g
 
 Get the public DNS name for the instance. This will be used by runners to access `goproxy` running on the bastion.
 ```bash
-echo "http://"+$(curl -s http://169.254.169.254/latest/meta-data/public-hostname)":8081"
+echo "http://"$(curl -s http://169.254.169.254/latest/meta-data/public-hostname)":8081"
 ```
 
 Open up `/etc/gitlab-runner/config.toml` in `vim` to edit the configuration file. In the `[[runners]]` section add the 
@@ -452,7 +452,7 @@ Example after update:
   name = "oss-devops-dev"
   url = "https://gitlab.com/"
   executor = "docker+machine"
-  environment = ["GOPROXY=http://ec2-52-36-105-172.us-west-2.compute.amazonaws.com:8081"]
+  environment = ["GOPROXY=http://ec2-52-34-34-34.us-west-2.compute.amazonaws.com:8081"]
 ```
 
 Restart the gitlab runner: 
