@@ -1403,7 +1403,10 @@ func (m *AwsEcsService) CreateInput(cluster *AwsEcsClusterResult, taskDefinition
 		healthCheckGracePeriodSeconds *int64
 	)
 	if len(ecsELBs) > 0 {
-		assignPublicIp = aws.String("DISABLED")
+		// TODO: It would be nice to set this to DISABLED and not assign public IPs if we are using an ELB, but
+		// 		ECS can't pull the image from ECR when its set to disabled.
+		assignPublicIp = aws.String("ENABLED")
+
 		healthCheckGracePeriodSeconds = aws.Int64(m.HealthCheckGracePeriodSeconds)
 	} else {
 		assignPublicIp = aws.String("ENABLED")
