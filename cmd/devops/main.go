@@ -115,9 +115,10 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 
 	// List of values that will be replaced in the files being copied.
 	replacements := map[string]string{
-		curImportPath: newImportPath,
-		"your project": projectDetails.ProjectName,
-		"project's": projectDetails.ProjectName + "'s",
+		curImportPath:                 newImportPath,
+		"your project":                projectDetails.ProjectName,
+		"project's":                   projectDetails.ProjectName + "'s",
+		`ProjectNamePrefix = "gitw-"`: `ProjectNamePrefix = ""`,
 	}
 
 	// List of path prefixes that should be not be copied to target project.

@@ -100,6 +100,12 @@ type Infrastructure struct {
 
 	// AwsAcmCertificate defines the ACM certificates.
 	AwsAcmCertificate map[string]*AwsAcmCertificateResult
+
+	// AwsCloudwatchEventRule defines the Cloudwatch Event rules.
+	AwsCloudwatchEventRule map[string]*AwsCloudwatchEventRuleResult
+
+	// AwsAppAutoscalingPolicy defines the Application Autoscaling policies.
+	AwsAppAutoscalingPolicy map[string]*AwsAppAutoscalingPolicyResult
 }
 
 // NewInfrastructure load the currently deploy infrastructure from AWS Secrets Manager.
@@ -364,6 +370,25 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 			_, err = infra.setupAwsIamRole(log, targetFunc.AwsIamRole)
 			if err != nil {
 				return nil, err
+			}
+		}
+
+		//  Find or create the AWS IAM role for events.
+		for _, eventRule := range targetFunc.AwsCloudwatchEventRules {
+			if eventRule.IamRole != nil {
+				_, err = infra.setupAwsIamRole(log, eventRule.IamRole)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			for _, eventTarget := range eventRule.Targets {
+				if eventTarget.IamRole != nil {
+					_, err = infra.setupAwsIamRole(log, eventTarget.IamRole)
+					if err != nil {
+						return nil, err
+					}
+				}
 			}
 		}
 	}

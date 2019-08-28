@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"io/ioutil"
 	"log"
 	"os"
@@ -100,7 +101,6 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			if _, ok := zones[zone.ZoneId]; !ok {
 				zones[zone.ZoneId] = []string{}
 			}
-
 
 			for idx, adn := range zone.AssocDomains {
 				if adn == dn {
@@ -578,6 +578,87 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 	ecsService, err := infra.setupAwsEcsService(log, ecsCluster, targetService.AwsEcsService, taskDef, vpc, securityGroup, sdService, elb)
 	if err != nil {
 		return err
+	}
+
+	if targetService.AwsAppAutoscalingPolicy != nil {
+		log.Println("\tConfigure application autoscaling policy.")
+
+		svc := applicationautoscaling.New(infra.AwsSession())
+
+		targetInput, err := targetService.AwsAppAutoscalingPolicy.RegisterTargetInput()
+		if err != nil {
+			return err
+		}
+
+		// The identifier of the resource associated with the scaling policy. This string
+		// consists of the resource type and unique identifier.
+		//    * ECS service - The resource type is service and the unique identifier
+		//    is the cluster name and service name. Example: service/default/sample-webapp.
+		targetInput.ResourceId = aws.String(filepath.Join("service", ecsCluster.ClusterName, ecsService.ServiceName))
+
+		// The scalable dimension. This string consists of the service namespace, resource
+		// type, and scaling property.
+		//    * ecs:service:DesiredCount - The desired task count of an ECS service.
+		targetInput.ScalableDimension = aws.String("ecs:service:DesiredCount")
+
+		// The namespace of the AWS service that provides the resource or custom-resource
+		// for a resource provided by your own application or service. For more information,
+		// see AWS Service Namespaces (http://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html#genref-aws-service-namespaces)
+		// in the Amazon Web Services General Reference.
+		targetInput.ServiceNamespace = aws.String("ecs")
+
+		targetRes, err := svc.RegisterScalableTarget(targetInput)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to register scalable target '%s'", *targetInput.ResourceId)
+		}
+		log.Printf("\t\tRegistered target %s: %s", *targetInput.ResourceId, targetRes.String())
+
+		policyInput, err := targetService.AwsAppAutoscalingPolicy.PutInput()
+		if err != nil {
+			return err
+		}
+		policyInput.ResourceId = targetInput.ResourceId
+		policyInput.ScalableDimension = targetInput.ScalableDimension
+		policyInput.ServiceNamespace = targetInput.ServiceNamespace
+
+		// PredefinedMetricType is ALBRequestCountPerTarget and ResourceLabel is empty, set the associated value.
+		if elb != nil && policyInput.TargetTrackingScalingPolicyConfiguration != nil &&
+			policyInput.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification != nil &&
+			policyInput.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType != nil &&
+			*policyInput.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.PredefinedMetricType == "ALBRequestCountPerTarget" {
+
+			if policyInput.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.ResourceLabel == nil || *policyInput.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.ResourceLabel == "" {
+
+				// Identifies the resource associated with the metric type. You can't specify
+				// a resource label unless the metric type is ALBRequestCountPerTarget and there
+				// is a target group attached to the Spot Fleet request or ECS service.
+				//
+				// The format is app/<load-balancer-name>/<load-balancer-id>/targetgroup/<target-group-name>/<target-group-id>,
+				// where:
+				//
+				//    * app/<load-balancer-name>/<load-balancer-id> is the final portion of
+				//    the load balancer ARN
+				//
+				//    * targetgroup/<target-group-name>/<target-group-id> is the final portion
+				//    of the target group ARN.
+				resourceLabel := filepath.Join(
+					// arn:aws:elasticloadbalancing:us-west-2:3333333333:loadbalancer/app/prod-aws-ecs-go-web-api/582fb8014672363c
+					strings.Split(elb.LoadBalancerArn, ":loadbalancer/")[1],
+
+					// arn:aws:elasticloadbalancing:us-west-2:3333333333:targetgroup/aws-ecs-go-web-api-http/c36d550933467b14
+					"targetgroup", strings.Split(elb.TargetGroups[0].TargetGroupArn, ":targetgroup/")[1])
+
+				policyInput.TargetTrackingScalingPolicyConfiguration.PredefinedMetricSpecification.ResourceLabel = aws.String(resourceLabel)
+
+				log.Printf("\t\tSet resource labe to '%s' for ALBRequestCountPerTarget", resourceLabel)
+			}
+		}
+
+		policyRes, err := svc.PutScalingPolicy(policyInput)
+		if err != nil {
+			return errors.Wrapf(err, "Failed to put scaling policy '%s'", targetService.AwsAppAutoscalingPolicy.PolicyName)
+		}
+		log.Printf("\t\tPut scaling policy %s: %s", *policyInput.ResourceId, policyRes.String())
 	}
 
 	// Step 10: When static files are enabled to be to stored on S3, we need to upload all of them.

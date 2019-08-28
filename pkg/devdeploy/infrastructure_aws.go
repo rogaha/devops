@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/acm"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
+	"github.com/aws/aws-sdk-go/service/cloudwatchevents"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ecr"
@@ -89,7 +90,13 @@ func (infra *Infrastructure) Ec2TagResource(resource, name string, tags ...Tag) 
 
 // GetAwsEcrRepository returns *AwsEcrRepositoryResult by repository name.
 func (infra *Infrastructure) GetAwsEcrRepository(repositoryName string) (*AwsEcrRepositoryResult, error) {
-	result, ok := infra.AwsEcrRepository[repositoryName]
+	var (
+		result *AwsEcrRepositoryResult
+		ok     bool
+	)
+	if infra.AwsEcrRepository != nil {
+		result, ok = infra.AwsEcrRepository[repositoryName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No repository configured for '%s'", repositoryName)
 	}
@@ -161,7 +168,13 @@ func (infra *Infrastructure) setupAwsEcrRepository(log *log.Logger, repo *AwsEcr
 
 // GetAwsIamPolicy returns *AwsIamPolicyResult by policy name.
 func (infra *Infrastructure) GetAwsIamPolicy(policyName string) (*AwsIamPolicyResult, error) {
-	result, ok := infra.AwsIamPolicy[policyName]
+	var (
+		result *AwsIamPolicyResult
+		ok     bool
+	)
+	if infra.AwsIamPolicy != nil {
+		result, ok = infra.AwsIamPolicy[policyName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No policy configured for '%s'", policyName)
 	}
@@ -320,7 +333,13 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 
 // GetAwsIamRole returns *AwsIamRoleResult by role name.
 func (infra *Infrastructure) GetAwsIamRole(roleName string) (*AwsIamRoleResult, error) {
-	result, ok := infra.AwsIamRole[roleName]
+	var (
+		result *AwsIamRoleResult
+		ok     bool
+	)
+	if infra.AwsIamRole != nil {
+		result, ok = infra.AwsIamRole[roleName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No role configured for '%s'", roleName)
 	}
@@ -412,7 +431,13 @@ func (infra *Infrastructure) setupAwsIamRole(log *log.Logger, targetRole *AwsIam
 
 // GetAwsS3Bucket returns *AwsS3BucketResult by bucket name.
 func (infra *Infrastructure) GetAwsS3Bucket(bucketName string) (*AwsS3BucketResult, error) {
-	result, ok := infra.AwsS3Buckets[bucketName]
+	var (
+		result *AwsS3BucketResult
+		ok     bool
+	)
+	if infra.AwsS3Buckets != nil {
+		result, ok = infra.AwsS3Buckets[bucketName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No vpc configured for '%s'", bucketName)
 	}
@@ -839,7 +864,13 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 // GetAwsEc2Vpc returns *AwsEc2VpcResult by vpc ID.
 func (infra *Infrastructure) GetAwsEc2Vpc(cidrBlock string) (*AwsEc2VpcResult, error) {
-	result, ok := infra.AwsEc2Vpc[cidrBlock]
+	var (
+		result *AwsEc2VpcResult
+		ok     bool
+	)
+	if infra.AwsEc2Vpc != nil {
+		result, ok = infra.AwsEc2Vpc[cidrBlock]
+	}
 	if !ok {
 		return nil, errors.Errorf("No vpc configured for '%s'", cidrBlock)
 	}
@@ -1037,7 +1068,13 @@ func (infra *Infrastructure) setupAwsEc2Vpc(log *log.Logger, targetVpc *AwsEc2Vp
 
 // GetAwsEc2SecurityGroup returns *AwsEc2SecurityGroupResult by security group name.
 func (infra *Infrastructure) GetAwsEc2SecurityGroup(groupName string) (*AwsEc2SecurityGroupResult, error) {
-	result, ok := infra.AwsEc2SecurityGroup[groupName]
+	var (
+		result *AwsEc2SecurityGroupResult
+		ok     bool
+	)
+	if infra.AwsEc2SecurityGroup != nil {
+		result, ok = infra.AwsEc2SecurityGroup[groupName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No bucket configured for '%s'", groupName)
 	}
@@ -1172,7 +1209,13 @@ func (infra *Infrastructure) setupAwsEc2SecurityGroup(log *log.Logger, targetSg 
 
 // GetAwsElasticCacheCluster returns *AwsElasticCacheClusterResult by cache cluster ID.
 func (infra *Infrastructure) GetAwsElasticCacheCluster(cacheClusterId string) (*AwsElasticCacheClusterResult, error) {
-	result, ok := infra.AwsElasticCacheCluster[cacheClusterId]
+	var (
+		result *AwsElasticCacheClusterResult
+		ok     bool
+	)
+	if infra.AwsElasticCacheCluster != nil {
+		result, ok = infra.AwsElasticCacheCluster[cacheClusterId]
+	}
 	if !ok {
 		return nil, errors.Errorf("No cache cluster configured for '%s'", cacheClusterId)
 	}
@@ -1453,7 +1496,13 @@ func (infra *Infrastructure) SaveDbConnInfo(name string, dBConnInfo *DBConnInfo)
 
 // GetAwsRdsDBCluster returns *AwsRdsDBClusterResult by database cluster ID.
 func (infra *Infrastructure) GetAwsRdsDBCluster(dBClusterIdentifier string) (*AwsRdsDBClusterResult, error) {
-	result, ok := infra.AwsRdsDBCluster[dBClusterIdentifier]
+	var (
+		result *AwsRdsDBClusterResult
+		ok     bool
+	)
+	if infra.AwsRdsDBCluster != nil {
+		result, ok = infra.AwsRdsDBCluster[dBClusterIdentifier]
+	}
 	if !ok {
 		return nil, errors.Errorf("No cluster configured for '%s'", dBClusterIdentifier)
 	}
@@ -1644,7 +1693,13 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 
 // GetAwsRdsDBInstance returns *AwsRdsDBInstanceResult by database instance identifier.
 func (infra *Infrastructure) GetAwsRdsDBInstance(dBInstanceIdentifier string) (*AwsRdsDBInstanceResult, error) {
-	result, ok := infra.AwsRdsDBInstance[dBInstanceIdentifier]
+	var (
+		result *AwsRdsDBInstanceResult
+		ok     bool
+	)
+	if infra.AwsRdsDBInstance != nil {
+		result, ok = infra.AwsRdsDBInstance[dBInstanceIdentifier]
+	}
 	if !ok {
 		return nil, errors.Errorf("No instance configured for '%s'", dBInstanceIdentifier)
 	}
@@ -1832,7 +1887,13 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 
 // GetAwsEcsCluster returns *AwsEcsClusterResult by cluster name.
 func (infra *Infrastructure) GetAwsEcsCluster(clusterName string) (*AwsEcsClusterResult, error) {
-	result, ok := infra.AwsEcsCluster[clusterName]
+	var (
+		result *AwsEcsClusterResult
+		ok     bool
+	)
+	if infra.AwsEcsCluster != nil {
+		result, ok = infra.AwsEcsCluster[clusterName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No cluster configured for '%s'", clusterName)
 	}
@@ -2144,7 +2205,13 @@ func (infra *Infrastructure) setupAwsEcsService(log *log.Logger, cluster *AwsEcs
 
 // GetRoute53ZoneById returns *AwsRoute53ZoneResult by zone id.
 func (infra *Infrastructure) GetRoute53ZoneById(zoneId string) (*AwsRoute53ZoneResult, error) {
-	result, ok := infra.AwsRoute53Zone[zoneId]
+	var (
+		result *AwsRoute53ZoneResult
+		ok     bool
+	)
+	if infra.AwsRoute53Zone != nil {
+		result, ok = infra.AwsRoute53Zone[zoneId]
+	}
 	if !ok {
 		return nil, errors.Errorf("No zone configured for '%s'", zoneId)
 	}
@@ -2155,16 +2222,22 @@ func (infra *Infrastructure) GetRoute53ZoneById(zoneId string) (*AwsRoute53ZoneR
 func (infra *Infrastructure) GetRoute53ZoneByDomain(domainName string) (*AwsRoute53ZoneResult, error) {
 	var result *AwsRoute53ZoneResult
 
-	for _, z := range infra.AwsRoute53Zone {
-		for _, dn := range z.AssocDomains {
-			if dn == domainName {
-				result = z
+	if infra.AwsRoute53Zone != nil {
+		for _, z := range infra.AwsRoute53Zone {
+			for _, dn := range z.AssocDomains {
+				if dn == domainName {
+					result = z
+					break
+				}
+			}
+			if result != nil {
 				break
 			}
 		}
-		if result != nil {
-			break
-		}
+	}
+
+	if result == nil {
+		return nil, errors.Errorf("No zone configured for domain '%s'", domainName)
 	}
 
 	return result, nil
@@ -2358,7 +2431,13 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 
 // GetAwsSdPrivateDnsNamespace returns *AwsSdPrivateDnsNamespaceResult by cluster name.
 func (infra *Infrastructure) GetAwsSdPrivateDnsNamespace(namespace string) (*AwsSdPrivateDnsNamespaceResult, error) {
-	result, ok := infra.AwsSdPrivateDnsNamespace[namespace]
+	var (
+		result *AwsSdPrivateDnsNamespaceResult
+		ok     bool
+	)
+	if infra.AwsSdPrivateDnsNamespace != nil {
+		result, ok = infra.AwsSdPrivateDnsNamespace[namespace]
+	}
 	if !ok {
 		return nil, errors.Errorf("No namespace configured for '%s'", namespace)
 	}
@@ -2367,7 +2446,13 @@ func (infra *Infrastructure) GetAwsSdPrivateDnsNamespace(namespace string) (*Aws
 
 // GetService returns *AwsSdServiceResult by service name.
 func (res *AwsSdPrivateDnsNamespaceResult) GetService(serviceName string) (*AwsSdServiceResult, error) {
-	result, ok := res.Services[serviceName]
+	var (
+		result *AwsSdServiceResult
+		ok     bool
+	)
+	if res.Services != nil {
+		result, ok = res.Services[serviceName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No service configured for '%s'", serviceName)
 	}
@@ -2587,7 +2672,13 @@ func (infra *Infrastructure) setupAwsSdService(log *log.Logger, sdNamespace *Aws
 
 // GetAwsCloudWatchLogGroup returns *AwsCloudWatchLogGroupResult by name.
 func (infra *Infrastructure) GetAwsCloudWatchLogGroup(logGroupName string) (*AwsCloudWatchLogGroupResult, error) {
-	result, ok := infra.AwsCloudWatchLogGroup[logGroupName]
+	var (
+		result *AwsCloudWatchLogGroupResult
+		ok     bool
+	)
+	if infra.AwsCloudWatchLogGroup != nil {
+		result, ok = infra.AwsCloudWatchLogGroup[logGroupName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No log group configured for '%s'", logGroupName)
 	}
@@ -2644,7 +2735,13 @@ func (infra *Infrastructure) setupAwsCloudWatchLogGroup(log *log.Logger, target 
 
 // GetAwsAcmCertificate returns *AwsAcmCertificateResult by domain name.
 func (infra *Infrastructure) GetAwsAcmCertificate(domainName string) (*AwsAcmCertificateResult, error) {
-	result, ok := infra.AwsAcmCertificate[domainName]
+	var (
+		result *AwsAcmCertificateResult
+		ok     bool
+	)
+	if infra.AwsAcmCertificate != nil {
+		result, ok = infra.AwsAcmCertificate[domainName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No certificate configured for '%s'", domainName)
 	}
@@ -2826,7 +2923,13 @@ func (infra *Infrastructure) setupAwsAcmCertificate(log *log.Logger, domainName 
 
 // GetAwsElbLoadBalancer returns *AwsElbLoadBalancerResult by load balancer name.
 func (infra *Infrastructure) GetAwsElbLoadBalancer(loadBalancerName string) (*AwsElbLoadBalancerResult, error) {
-	result, ok := infra.AwsElbLoadBalancer[loadBalancerName]
+	var (
+		result *AwsElbLoadBalancerResult
+		ok     bool
+	)
+	if infra.AwsElbLoadBalancer != nil {
+		result, ok = infra.AwsElbLoadBalancer[loadBalancerName]
+	}
 	if !ok {
 		return nil, errors.Errorf("No load balancer configured for '%s'", loadBalancerName)
 	}
@@ -3020,7 +3123,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 		if err != nil {
 			return nil, err
 		}
-		inputHash = getInputHash(groupInput, definedElb.EcsTaskDeregistrationDelay)
+		inputHash := getInputHash(groupInput, definedElb.EcsTaskDeregistrationDelay)
 
 		var groupResult *AwsElbTargetGroupResult
 		for _, cg := range curTargetGroups {
@@ -3165,12 +3268,10 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 				LoadBalancerArn: *listener.LoadBalancerArn,
 				Port:            *listener.Port,
 				Protocol:        *listener.Protocol,
-				SslPolicy:       *listener.SslPolicy,
 			}
 
 			for _, a := range listener.DefaultActions {
 				la := &AwsElbAction{
-					Order:          *a.Order,
 					TargetGroupArn: *a.TargetGroupArn,
 					Type:           *a.Type,
 				}
@@ -3190,9 +3291,13 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 			}
 
 			for _, c := range listener.Certificates {
+				var certIsDefault bool
+				if c.IsDefault != nil {
+					certIsDefault = *c.IsDefault
+				}
 				listenerResult.Certificates = append(listenerResult.Certificates, &AwsElbCertificate{
 					CertificateArn: *c.CertificateArn,
-					IsDefault:      *c.IsDefault,
+					IsDefault:      certIsDefault,
 				})
 			}
 		}
@@ -3253,6 +3358,233 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 	return result, nil
 }
 
+// GetAwsCloudwatchEventRule returns *AwsElbLoadBalancerResult by rule name.
+func (infra *Infrastructure) GetAwsCloudwatchEventRule(ruleName string) (*AwsCloudwatchEventRuleResult, error) {
+	var (
+		result *AwsCloudwatchEventRuleResult
+		ok     bool
+	)
+	if infra.AwsCloudwatchEventRule != nil {
+		result, ok = infra.AwsCloudwatchEventRule[ruleName]
+	}
+
+	if !ok {
+		return nil, errors.Errorf("No rule configured for '%s'", ruleName)
+	}
+	return result, nil
+}
+
+// setupAwsCloudwatchEventRule ensures the AWS Cloudwatch Event rule exists else creates it.
+func (infra *Infrastructure) setupAwsCloudwatchEventRule(log *log.Logger, definedRule *AwsCloudwatchEventRule) (*AwsCloudwatchEventRuleResult, error) {
+
+	ruleName := definedRule.Name
+
+	log.Printf("\tCloudwatch Event - Get or create rule '%s'\n", ruleName)
+
+	input, err := definedRule.Input(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var targets []*cloudwatchevents.Target
+	for _, t := range definedRule.Targets {
+		ti, err := t.Target(nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, ti)
+	}
+
+	inputHash := getInputHash(input, targets)
+
+	if infra.AwsCloudwatchEventRule == nil {
+		infra.AwsCloudwatchEventRule = make(map[string]*AwsCloudwatchEventRuleResult)
+	}
+
+	result, ok := infra.AwsCloudwatchEventRule[definedRule.Name]
+	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
+		log.Printf("\t\tExists: %s", result.Name)
+		return result, nil
+	}
+
+	svc := cloudwatchevents.New(infra.AwsSession())
+
+	var rule *cloudwatchevents.Rule
+	res, err := svc.ListRules(&cloudwatchevents.ListRulesInput{
+		EventBusName: definedRule.EventBusName,
+		NamePrefix:   aws.String(ruleName),
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to list rules for '%s'", ruleName)
+	} else if res != nil && len(res.Rules) > 0 {
+		for _, r := range res.Rules {
+			if *r.Name == ruleName {
+				rule = r
+			} else if result != nil && result.Arn == *r.Arn {
+				rule = r
+			}
+
+			if rule != nil {
+				log.Printf("\t\tFound rule %s", *rule.Arn)
+				log.Printf("\t\t\tState: ", *rule.State)
+				break
+			}
+		}
+	}
+
+	// If a role has been defined, then ensure its setup and set the roleARN for the rule.
+	if definedRule.IamRole != nil {
+		role, err := infra.GetAwsIamRole(definedRule.IamRole.RoleName)
+		if err != nil || role == nil {
+			curLogPrefix := log.Prefix()
+
+			log.SetPrefix(curLogPrefix + "\t\t")
+
+			role, err = infra.setupAwsIamRole(log, definedRule.IamRole)
+			if err != nil {
+				return nil, err
+			}
+
+			log.SetPrefix(curLogPrefix)
+		}
+
+		definedRule.RoleArn = aws.String(role.Arn)
+	}
+
+	// Get an updated input that applies any changes based on the existing rule.
+	input, err = definedRule.Input(rule)
+	if err != nil {
+		return nil, err
+	}
+
+	// Creates or updates the specified rule. Rules are enabled by default or based on value of the state.
+	// If you're updating an existing rule, the rule is replaced with what you specify in this PutRule command.
+	// If you omit arguments in PutRule, the old values for those arguments aren't kept. Instead, they're replaced with null values.
+	putRes, err := svc.PutRule(input)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to put rule '%s'", ruleName)
+	}
+	if rule != nil {
+		log.Printf("\t\tUpdated rule %s", *rule.Arn)
+	} else {
+		log.Printf("\t\tCreated rule %s", *putRes.RuleArn)
+	}
+
+	// Update the result keeping any existing targets already defined.
+	{
+		var curRuleTargets map[string]*AwsCloudwatchEventTargetResult
+		if result != nil {
+			curRuleTargets = result.Targets
+		}
+
+		result = &AwsCloudwatchEventRuleResult{
+			Name:         ruleName,
+			EventBusName: definedRule.EventBusName,
+			Arn:          *putRes.RuleArn,
+			InputHash:    inputHash,
+			Targets:      curRuleTargets,
+		}
+	}
+
+	log.Printf("\t\tConfigure %d targets", len(definedRule.Targets))
+
+	targetRes, err := svc.ListTargetsByRule(&cloudwatchevents.ListTargetsByRuleInput{
+		Rule:         aws.String(ruleName),
+		EventBusName: definedRule.EventBusName,
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to list targets for '%s'", ruleName)
+	}
+
+	curTargets := make(map[string]*cloudwatchevents.Target)
+	for _, t := range targetRes.Targets {
+		curTargets[*t.Id] = t
+	}
+
+	targetsInput := &cloudwatchevents.PutTargetsInput{
+		EventBusName: definedRule.EventBusName,
+		Rule:         aws.String(ruleName),
+	}
+
+	for _, rt := range definedRule.Targets {
+
+		// If a role has been defined, then ensure its setup and set the roleARN for the target.
+		if rt.IamRole != nil {
+			role, err := infra.GetAwsIamRole(rt.IamRole.RoleName)
+			if err != nil || role == nil {
+				curLogPrefix := log.Prefix()
+
+				log.SetPrefix(curLogPrefix + "\t\t\t")
+
+				role, err = infra.setupAwsIamRole(log, rt.IamRole)
+				if err != nil {
+					return nil, err
+				}
+
+				log.SetPrefix(curLogPrefix)
+			}
+
+			rt.RoleArn = aws.String(role.Arn)
+		}
+
+		target, err := rt.Target(nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		inputHash := getInputHash(target)
+
+		crt, err := result.GetTarget(rt.Id)
+		if err == nil && crt != nil && crt.InputHash == inputHash && !infra.skipCache {
+			log.Printf("\t\t\tExists: %s", target.Id)
+		} else {
+			ct, ok := curTargets[rt.Id]
+			if ok {
+				log.Printf("\t\t\tUpdate: %s", target.Id)
+			} else {
+				log.Printf("\t\t\tAdd: %s", target.Id)
+			}
+
+			// Get an updated target that applies any changes based on the existing target.
+			target, err = rt.Target(result, ct)
+			if err != nil {
+				return nil, err
+			}
+
+			crt = &AwsCloudwatchEventTargetResult{
+				Arn:       rt.Arn,
+				Id:        rt.Id,
+				InputHash: inputHash,
+			}
+
+			targetsInput.Targets = append(targetsInput.Targets, target)
+		}
+
+		result.Targets[rt.Id] = crt
+	}
+
+	infra.AwsCloudwatchEventRule[ruleName] = result
+
+	log.Printf("\t%s\tCertificate available\n", Success)
+
+	return result, nil
+}
+
+// GetAwsAppAutoscalingPolicy returns *AwsAppAutoscalingPolicyResult by policy name.
+func (infra *Infrastructure) GetAwsAppAutoscalingPolicy(policyName string) (*AwsAppAutoscalingPolicyResult, error) {
+	var (
+		result *AwsAppAutoscalingPolicyResult
+		ok     bool
+	)
+	if infra.AwsAppAutoscalingPolicy != nil {
+		result, ok = infra.AwsAppAutoscalingPolicy[policyName]
+	}
+
+	if !ok {
+		return nil, errors.Errorf("No policy configured for '%s'", policyName)
+	}
+	return result, nil
+}
+
 // getInputHash computes an MD5 for an input struct.
 func getInputHash(input interface{}, vals ...interface{}) string {
 	if input == nil {
@@ -3268,3 +3600,454 @@ func getInputHash(input interface{}, vals ...interface{}) string {
 
 	return fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(hashes, "|"))))
 }
+
+/*
+
+
+ctx.AwsElbLoadBalancer.AutoScalingGroup = &devdeploy.AwsAutoScalingGroup {
+				// The name of the scaling policy.
+				PolicyName: ctx.AwsEcsService.ServiceName,
+
+				// The maximum size of the group.
+				MaxSize: desiredCount * 2,
+
+				// The minimum size of the group.
+				MinSize: 1,
+
+				// The number of Amazon EC2 instances that the Auto Scaling group attempts to
+				// maintain. This number must be greater than or equal to the minimum size of
+				// the group and less than or equal to the maximum size of the group. If you
+				// do not specify a desired capacity, the default is the minimum size of the
+				// group.
+				DesiredCapacity: aws.Int64(desiredCount),
+
+				// The amount of time, in seconds, that Amazon EC2 Auto Scaling waits before
+				// checking the health status of an EC2 instance that has come into service.
+				// During this time, any health check failures for the instance are ignored.
+				// The default value is 0.
+				HealthCheckGracePeriod: aws.Int64(300),
+
+				// The key-value pairs to use for the tags.
+				Tags: []devdeploy.Tag{
+					{Key: devdeploy.AwsTagNameProject, Value: cfg.ProjectName},
+					{Key: devdeploy.AwsTagNameEnv, Value: cfg.Env},
+				},
+
+				Policies: []*devdeploy.AwsAutoScalingPolicy{
+					&devdeploy.AwsAutoScalingPolicy{
+						PutScalingPolicyInput: &autoscaling.PutScalingPolicyInput{
+							// The name of the policy.
+							PolicyName: aws.String(fmt.Sprintf("%s-cpu", ctx.AwsElbLoadBalancer.Name)),
+
+							// The policy type. The valid values are SimpleScaling, StepScaling, and TargetTrackingScaling.
+							// If the policy type is null, the value is treated as SimpleScaling.
+							PolicyType: aws.String("TargetTrackingScaling"),
+
+							// Specifies whether the ScalingAdjustment parameter is an absolute number or
+							// a percentage of the current capacity. The valid values are ChangeInCapacity,
+							// ExactCapacity, and PercentChangeInCapacity.
+							//
+							// Valid only if the policy type is StepScaling or SimpleScaling. For more information,
+							// see Scaling Adjustment Types (https://docs.aws.amazon.com/autoscaling/ec2/userguide/as-scaling-simple-step.html#as-scaling-adjustment)
+							// in the Amazon EC2 Auto Scaling User Guide.
+							AdjustmentType: aws.String("ChangeInCapacity"),
+
+							// The amount of time, in seconds, after a scaling activity completes before
+							// any further dynamic scaling activities can start. If this parameter is not
+							// specified, the default cooldown period for the group applies.
+							//
+							// Valid only if the policy type is SimpleScaling. For more information, see
+							// Scaling Cooldowns (https://docs.aws.amazon.com/autoscaling/ec2/userguide/Cooldown.html)
+							// in the Amazon EC2 Auto Scaling User Guide.
+							Cooldown: aws.Int64(300),
+
+							// The estimated time, in seconds, until a newly launched instance can contribute
+							// to the CloudWatch metrics. The default is to use the value specified for
+							// the default cooldown period for the group.
+							//
+							// Valid only if the policy type is StepScaling or TargetTrackingScaling.
+							EstimatedInstanceWarmup: aws.Int64(60),
+
+							// The amount by which a simple scaling policy scales the Auto Scaling group
+							// in response to an alarm breach. The adjustment is based on the value that
+							// you specified in the AdjustmentType parameter (either an absolute number
+							// or a percentage). A positive value adds to the current capacity and a negative
+							// value subtracts from the current capacity. For exact capacity, you must specify
+							// a positive value.
+							//
+							// Conditional: If you specify SimpleScaling for the policy type, you must specify
+							// this parameter. (Not used with any other policy type.)
+							ScalingAdjustment: aws.Int64(1),
+
+
+							// A target tracking scaling policy. Includes support for predefined or customized
+							// metrics.
+							//
+							// For more information, see TargetTrackingConfiguration (https://docs.aws.amazon.com/autoscaling/ec2/APIReference/API_TargetTrackingConfiguration.html)
+							// in the Amazon EC2 Auto Scaling API Reference.
+							//
+							// Conditional: If you specify TargetTrackingScaling for the policy type, you
+							// must specify this parameter. (Not used with any other policy type.)
+							TargetTrackingConfiguration: &autoscaling.TargetTrackingConfiguration{
+								// A predefined metric. You must specify either a predefined metric or a customized
+								// metric.
+								PredefinedMetricSpecification: &autoscaling.PredefinedMetricSpecification{
+									// The metric type. The following predefined metrics are available:
+									//
+									//    * ASGAverageCPUUtilization - Average CPU utilization of the Auto Scaling
+									//    group.
+									//
+									//    * ASGAverageNetworkIn - Average number of bytes received on all network
+									//    interfaces by the Auto Scaling group.
+									//
+									//    * ASGAverageNetworkOut - Average number of bytes sent out on all network
+									//    interfaces by the Auto Scaling group.
+									//
+									//    * ALBRequestCountPerTarget - Number of requests completed per target in
+									//    an Application Load Balancer target group.
+									//
+									PredefinedMetricType: aws.String("ASGAverageCPUUtilization"),
+
+									// Identifies the resource associated with the metric type.
+									//
+									// For predefined metric types ASGAverageCPUUtilization, ASGAverageNetworkIn, and
+									// ASGAverageNetworkOut, the parameter must not be specified as the resource
+									// associated with the metric type is the Auto Scaling group.
+									//
+									// For predefined metric type ALBRequestCountPerTarget, the parameter must be
+									// specified in format:
+									// 		app/load-balancer-name/load-balancer-id/targetgroup/target-group-name/target-group-id
+									// where app/load-balancer-name/load-balancer-id is the final portion of the
+									// load balancer ARN, and targetgroup/target-group-name/target-group-id is the
+									// final portion of the target group ARN. The target group must be attached
+									// to the Auto Scaling group.
+									ResourceLabel: nil,
+								},
+
+								// The target value for the metric.
+								//
+								// TargetValue is a required field
+								TargetValue: aws.Float64(60),
+
+								// Indicates whether scaling in by the target tracking scaling policy is disabled.
+								// If scaling in is disabled, the target tracking scaling policy doesn't remove
+								// instances from the Auto Scaling group. Otherwise, the target tracking scaling
+								// policy can remove instances from the Auto Scaling group. The default is false.
+								DisableScaleIn: aws.Bool(false),
+							},
+						},
+					},
+				},
+			}
+
+// AwsEc2AutoscalingGroup defines the details needed to create an autoscaling group.
+type AwsEc2AutoscalingGroup struct {
+	// The name of the Auto Scaling group. This name must be unique per Region per account.
+	GroupName string
+
+	// The name of the launch configuration.
+	LaunchConfigurationName string
+
+	// The maximum size of the group.
+	MaxSize int64
+
+	// The minimum size of the group.
+	MinSize int64
+
+	// The number of Amazon EC2 instances that the Auto Scaling group attempts to
+	// maintain. This number must be greater than or equal to the minimum size of
+	// the group and less than or equal to the maximum size of the group. If you
+	// do not specify a desired capacity, the default is the minimum size of the
+	// group.
+	DesiredCapacity *int64
+
+	// The amount of time, in seconds, that Amazon EC2 Auto Scaling waits before
+	// checking the health status of an EC2 instance that has come into service.
+	// During this time, any health check failures for the instance are ignored.
+	// The default value is 0.
+	//
+	// For more information, see Health Check Grace Period (https://docs.aws.amazon.com/autoscaling/ec2/userguide/healthcheck.html#health-check-grace-period)
+	// in the Amazon EC2 Auto Scaling User Guide.
+	//
+	// Conditional: This parameter is required if you are adding an ELB health check.
+	HealthCheckGracePeriod *int64
+
+	// The key-value pairs to use for the tags.
+	Tags []Tag
+
+	// Optional list of polices to be associated with the group.
+	Policies []*AwsEc2AutoscalingPolicy
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *autoscaling.CreateAutoScalingGroupInput) error `json:"-"`
+}
+
+// AwsEc2AutoscalingGroupResult defines information about an autoscaling group.
+type AwsEc2AutoscalingGroupResult struct {
+	// The name of the Auto Scaling group. This name must be unique per Region per account.
+	GroupName string
+
+	// The name of the launch configuration.
+	LaunchConfigurationName string
+
+	// The maximum size of the group.
+	MaxSize int64
+
+	// The minimum size of the group.
+	MinSize int64
+
+	// The number of Amazon EC2 instances that the Auto Scaling group attempts to
+	// maintain. This number must be greater than or equal to the minimum size of
+	// the group and less than or equal to the maximum size of the group. If you
+	// do not specify a desired capacity, the default is the minimum size of the
+	// group.
+	DesiredCapacity *int64
+
+	// The Amazon Resource Name (ARN) of the group.
+	GroupARN string
+
+	// Optional list of polices that are associated with the group.
+	Policies map[string]*AwsEc2AutoscalingPolicyResult
+
+	// The md5 hash of the input used to create the Group.
+	InputHash string
+}
+
+// Input returns the AWS input for autoscaling.CreateAutoScalingGroup.
+func (m *AwsEc2AutoscalingGroup) Input(elb *AwsElbLoadBalancerResult, vpc *AwsEc2VpcResult) (*autoscaling.CreateAutoScalingGroupInput, error) {
+
+	input := &autoscaling.CreateAutoScalingGroupInput{
+		AutoScalingGroupName:          aws.String(m.GroupName),
+		LaunchConfigurationName: aws.String(m.LaunchConfigurationName),
+		MaxSize: aws.Int64(m.MaxSize),
+		MinSize:        aws.Int64(m.MinSize),
+		DesiredCapacity:          m.DesiredCapacity,
+		HealthCheckGracePeriod:          m.HealthCheckGracePeriod,
+		HealthCheckType:          aws.String("ELB"),
+	}
+
+	if vpc != nil {
+		input.VPCZoneIdentifier = aws.String(strings.Join(vpc.SubnetIds, ", "))
+	}
+
+	if elb != nil {
+		for _, tg := range elb.TargetGroups {
+			input.TargetGroupARNs = append(input.TargetGroupARNs, aws.String(tg.TargetGroupArn))
+		}
+	}
+
+	for _, t := range m.Tags {
+		input.Tags = append(input.Tags, &autoscaling.Tag{
+			Key:   aws.String(t.Key),
+			Value: aws.String(t.Value),
+		})
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// GetPolicy returns *AwsCloudwatchEventTargetResult by id.
+func (res *AwsEc2AutoscalingGroupResult) GetPolicy(policyName string) (*AwsEc2AutoscalingPolicyResult, error) {
+	var (
+		result *AwsEc2AutoscalingPolicyResult
+		ok bool
+	)
+	if res.Policies != nil {
+		result, ok = res.Policies[policyName]
+	}
+	if !ok {
+		return nil, errors.Errorf("No policy configured for '%s'", policyName)
+	}
+	return result, nil
+}
+
+// AwsEc2AutoscalingPolicy defines the details needed to create an autoscaling policy.
+type AwsEc2AutoscalingPolicy struct {
+	*autoscaling.PutScalingPolicyInput
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(group *AwsEc2AutoscalingGroupResult, input *autoscaling.PutScalingPolicyInput) error `json:"-"`
+}
+
+// AwsEc2AutoscalingPolicyResult defines information about an autoscaling policy.
+type AwsEc2AutoscalingPolicyResult struct {
+	// The name of the policy.
+	PolicyName string
+
+	// The policy type.
+	PolicyType string
+
+	// The Amazon Resource Name (ARN) of the policy.
+	PolicyARN string
+
+	// The md5 hash of the input used to create the Group.
+	InputHash string
+}
+
+// Input returns the AWS input for autoscaling.PutScalingPolicy.
+func (m *AwsEc2AutoscalingPolicy) Input(group *AwsEc2AutoscalingGroupResult) (*autoscaling.PutScalingPolicyInput, error) {
+
+	input := m.PutScalingPolicyInput
+	if input == nil {
+		input = &autoscaling.PutScalingPolicyInput{}
+	}
+
+	input.AutoScalingGroupName =aws.String(group.GroupName)
+
+	if m.PreCreate != nil {
+		if group == nil {
+			group = &AwsEc2AutoscalingGroupResult{}
+		}
+		if err := m.PreCreate(group, input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+
+
+if definedElb.AutoScalingGroup != nil {
+		groupInput, err := definedElb.AutoScalingGroup.Input(result)
+		if err != nil {
+			return nil, err
+		}
+		inputHash := getInputHash(groupInput)
+
+		groupName := definedElb.AutoScalingGroup.GroupName
+
+		as := autoscaling.New(infra.AwsSession())
+
+		if curAutoscalingGroup != nil  && curAutoscalingGroup.InputHash == inputHash && !infra.skipCache {
+			log.Printf("\t\t\tAutoscaling group %s exists: %s", curAutoscalingGroup.GroupName, curAutoscalingGroup.GroupARN)
+		} else {
+
+			groupRes, err := as.DescribeAutoScalingGroups(&autoscaling.DescribeAutoScalingGroupsInput{
+				AutoScalingGroupNames: aws.StringSlice([]string{groupName}),
+			})
+			if err != nil {
+				return nil, errors.Wrapf(err, "Failed to describe group '%s'", groupName)
+			}
+
+			var scalingGroup *autoscaling.Group
+			for _, g := range groupRes.AutoScalingGroups {
+				if *g.AutoScalingGroupName == groupName || (curAutoscalingGroup != nil && curAutoscalingGroup.GroupARN == *g.AutoScalingGroupARN) {
+					scalingGroup = g
+					break
+				}
+			}
+
+			var groupArn string
+			if scalingGroup == nil {
+				// If no target group was found, create one.
+				createRes, err := as.CreateAutoScalingGroup(groupInput)
+				if err != nil {
+					return nil, errors.Wrapf(err, "Failed to create group '%s'", groupName)
+				}
+				groupArn = createRes.String()
+
+				log.Printf("\t\t\tAutoscaling Group %s created: %s", groupName, groupArn)
+			} else {
+				groupArn = *scalingGroup.AutoScalingGroupARN
+
+				log.Printf("\t\t\tAutoscaling Group %s found: %s", groupName, groupArn)
+			}
+
+			var curPolicies map[string]*AwsEc2AutoscalingPolicyResult
+			if curAutoscalingGroup != nil && curAutoscalingGroup.Policies != nil  {
+				curPolicies = curAutoscalingGroup.Policies
+			} else {
+				curPolicies = make(map[string]*AwsEc2AutoscalingPolicyResult)
+			}
+
+			curAutoscalingGroup = &AwsEc2AutoscalingGroupResult{
+				GroupName : groupName,
+				MaxSize : definedElb.AutoScalingGroup.MaxSize,
+				MinSize: definedElb.AutoScalingGroup.MinSize,
+				DesiredCapacity: definedElb.AutoScalingGroup.DesiredCapacity,
+				GroupARN: groupArn,
+				InputHash: inputHash,
+				Policies: curPolicies,
+			}
+		}
+
+		for _, definedPolicy := range definedElb.AutoScalingGroup.Policies {
+			policyInput, err := definedPolicy.Input(curAutoscalingGroup)
+			if err != nil {
+				return nil, err
+			}
+			inputHash := getInputHash(policyInput)
+
+			var policyName string
+			if definedPolicy.PolicyName != nil {
+				policyName = *definedPolicy.PolicyName
+			}
+
+			curPolicy, err := curAutoscalingGroup.GetPolicy(policyName)
+			if err == nil && curPolicy != nil  && curPolicy.InputHash == inputHash && !infra.skipCache {
+				log.Printf("\t\t\t\tPolicy %s exists: %s", policyName, curPolicy.PolicyARN)
+			} else {
+				policyRes, err := as.DescribePolicies(&autoscaling.DescribePoliciesInput{
+					AutoScalingGroupName: aws.String(groupName),
+					PolicyNames: aws.StringSlice([]string{policyName}),
+				})
+				if err != nil {
+					return nil, errors.Wrapf(err, "Failed to describe policy '%s'", policyName)
+				}
+
+				var scalingPolicy *autoscaling.ScalingPolicy
+				for _, p := range policyRes.ScalingPolicies {
+					if *p.PolicyName	 == policyName || (curPolicy != nil && curPolicy.PolicyARN == *p.PolicyARN) {
+						scalingPolicy =p
+						break
+					}
+				}
+
+				var policyArn string
+				var policyType string
+				if scalingPolicy == nil {
+					// If no target group was found, create one.
+					createRes, err := as.PutScalingPolicy(policyInput)
+					if err != nil {
+						return nil, errors.Wrapf(err, "Failed to create policy '%s'", policyName)
+					}
+					policyArn = createRes.String()
+
+					if definedPolicy.PolicyType != nil {
+						policyType = *definedPolicy.PolicyType
+					}
+
+					// If the policy type is null, the value is treated as SimpleScaling.
+					if policyType == "" {
+						policyType = "SimpleScaling"
+					}
+
+					log.Printf("\t\t\t\tAutoscaling policy %s created: %s", policyName, policyArn)
+				} else {
+					policyArn = *scalingPolicy.PolicyARN
+					policyType = *scalingPolicy.PolicyType
+
+					log.Printf("\t\t\t\tAutoscaling policy %s found: %s", policyName, policyArn)
+				}
+
+				curPolicy = &AwsEc2AutoscalingPolicyResult{
+					PolicyName : policyName,
+					PolicyType : policyType,
+					PolicyARN: policyArn,
+					InputHash: inputHash,
+				}
+			}
+
+			curAutoscalingGroup.Policies[curPolicy.PolicyName] = curPolicy
+		}
+
+		result.Ec2AutoScalingGroup = curAutoscalingGroup
+	}
+*/

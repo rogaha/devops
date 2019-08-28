@@ -253,6 +253,34 @@ func main() {
 	}
 
 	// =========================================================================
+	// Register routes
+
+	// Ping Handler - used by AWS ELB target group health check.
+	// 	build/cicd/internal/config/service.go
+	// 		ctx.AwsElbLoadBalancer.TargetGroups = []*devdeploy.AwsElbTargetGroup{
+	//			&devdeploy.AwsElbTargetGroup{
+	//				Name:                       fmt.Sprintf("%s-http", ctx.Name),
+	//				Port:                       80,
+	//				Protocol:                   "HTTP",
+	//				TargetType:                 "ip",
+	//				HealthCheckEnabled:         true,
+	//				HealthCheckIntervalSeconds: 30,
+	//				HealthCheckPath:            "/ping",
+	//				HealthCheckProtocol:        "HTTP",
+	//				HealthCheckTimeoutSeconds:  5,
+	//				HealthyThresholdCount:      3,
+	//				UnhealthyThresholdCount:    3,
+	//				Matcher:                    "200",
+	//			},
+	//		}
+	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+
+		w.WriteHeader(http.StatusOK)
+
+		fmt.Fprintf(w, "PONG")
+	})
+
 	// Main Handler
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 

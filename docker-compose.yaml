@@ -42,7 +42,7 @@ services:
       target: dev
       dockerfile: examples/aws-ecs-go-web-api/Dockerfile
       args:
-        service: 'aws-ecs-go-web-api'
+        name: 'aws-ecs-go-web-api'
     volumes:
       - ./:/go/src/gitlab.com/geeks-accelerator/oss/devops
     ports:

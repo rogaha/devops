@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +14,26 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
+)
+
+const (
+	// EnableServiceElb will enable all services to be deployed with an ELB (Elastic Load Balancer).
+	// This will only be applied to the prod env, but the logic can be changed in the code below.
+	//
+	// When enabled each service will require it's own ELB and therefore will add $20~ month per service when
+	// this is enabled. The hostnames defined for the service will be updated in Route53 to resolve to the ELB.
+	// If HTTPS is enabled, the ELB will be created with an AWS ACM certificate that will support SSL termination on
+	// the ELB, all traffic will be sent to the container as HTTP.
+	// This can be configured on a by service basis.
+	//
+	// When not enabled, tasks will be auto assigned a public IP. As ECS tasks for the service are launched/terminated,
+	// the task will update the hostnames defined for the service in Route53 to either add/remove its public IP. This
+	// option is good for services that only need one container running.
+	EnableServiceElb = false
+
+	// EnableServiceAutoscaling will enable all services to be deployed with an application scaling policy. This should
+	// typically be enabled for front end services that have an ELB enabled. 
+	EnableServiceAutoscaling = false
 )
 
 // Service define the name of a service.
@@ -45,12 +66,21 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 	// =========================================================================
 	// Context settings based on target env.
 	var enableElb bool
+	var desiredCount int64
 	if cfg.Env == EnvStage || cfg.Env == EnvProd {
+		desiredCount = 1
+
 		ctx.EnableHTTPS = true
+
+		if cfg.Env == EnvProd && EnableServiceElb {
+			enableElb = true
+		}
 
 		// Sync static files to S3 will be enabled when the S3 prefix is defined.
 		ctx.StaticFilesS3Prefix = filepath.Join(cfg.AwsS3BucketPublicKeyPrefix, ctx.ReleaseTag, "static")
 	} else {
+		desiredCount = 1
+
 		ctx.EnableHTTPS = false
 	}
 
@@ -119,7 +149,7 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 	if enableElb {
 		// AwsElbLoadBalancer defines if the service should use an elastic load balancer.
 		ctx.AwsElbLoadBalancer = &devdeploy.AwsElbLoadBalancer{
-			Name:          fmt.Sprintf("%s-%s-%s", cfg.Env, ctx.AwsEcsCluster.ClusterName, ctx.Name),
+			Name:          fmt.Sprintf("%s-%s", cfg.Env, ctx.Name),
 			IpAddressType: "ipv4",
 			Scheme:        "internet-facing",
 			Type:          "application",
@@ -163,7 +193,7 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 	// AwsEcsService defines the details for the ecs service.
 	ctx.AwsEcsService = &devdeploy.AwsEcsService{
 		ServiceName:                   ctx.Name,
-		DesiredCount:                  int64(1),
+		DesiredCount:                  desiredCount,
 		EnableECSManagedTags:          false,
 		HealthCheckGracePeriodSeconds: 60,
 		LaunchType:                    "FARGATE",
@@ -176,6 +206,90 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 	} else {
 		ctx.AwsEcsService.DeploymentMinimumHealthyPercent = 100
 		ctx.AwsEcsService.DeploymentMaximumPercent = 200
+	}
+
+	if EnableServiceAutoscaling {
+		ctx.AwsAppAutoscalingPolicy = &devdeploy.AwsAppAutoscalingPolicy{
+			// The name of the scaling policy.
+			PolicyName: ctx.AwsEcsService.ServiceName,
+
+			// The policy type. This parameter is required if you are creating a scaling
+			// policy.
+			//
+			// The following policy types are supported:
+			//
+			// TargetTrackingScaling—Not supported for Amazon EMR or AppStream
+			//
+			// StepScaling—Not supported for Amazon DynamoDB
+			//
+			// For more information, see Step Scaling Policies for Application Auto Scaling
+			// (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-step-scaling-policies.html)
+			// and Target Tracking Scaling Policies for Application Auto Scaling (https://docs.aws.amazon.com/autoscaling/application/userguide/application-auto-scaling-target-tracking.html)
+			// in the Application Auto Scaling User Guide.
+			PolicyType: "TargetTrackingScaling",
+
+			// The minimum value to scale to in response to a scale-in event. MinCapacity
+			// is required to register a scalable target.
+			MinCapacity: desiredCount,
+
+			// The maximum value to scale to in response to a scale-out event. MaxCapacity
+			// is required to register a scalable target.
+			MaxCapacity: desiredCount * 2,
+
+			// A target tracking scaling policy. Includes support for predefined or customized metrics.
+			TargetTrackingScalingPolicyConfiguration: &applicationautoscaling.TargetTrackingScalingPolicyConfiguration{
+
+				// A predefined metric. You can specify either a predefined metric or a customized
+				// metric.
+				PredefinedMetricSpecification: &applicationautoscaling.PredefinedMetricSpecification{
+					// The metric type. The following predefined metrics are available:
+					//
+					//    * ASGAverageCPUUtilization - Average CPU utilization of the Auto Scaling
+					//    group.
+					//
+					//    * ASGAverageNetworkIn - Average number of bytes received on all network
+					//    interfaces by the Auto Scaling group.
+					//
+					//    * ASGAverageNetworkOut - Average number of bytes sent out on all network
+					//    interfaces by the Auto Scaling group.
+					//
+					//    * ALBRequestCountPerTarget - Number of requests completed per target in
+					//    an Application Load Balancer target group. ResourceLabel will be auto populated.
+					//
+					PredefinedMetricType: aws.String("ECSServiceAverageCPUUtilization"),
+				},
+
+				// The target value for the metric. The range is 8.515920e-109 to 1.174271e+108
+				// (Base 10) or 2e-360 to 2e360 (Base 2).
+				TargetValue: aws.Float64(70.0),
+
+				// The amount of time, in seconds, after a scale-in activity completes before
+				// another scale in activity can start.
+				//
+				// The cooldown period is used to block subsequent scale-in requests until it
+				// has expired. The intention is to scale in conservatively to protect your
+				// application's availability. However, if another alarm triggers a scale-out
+				// policy during the cooldown period after a scale-in, Application Auto Scaling
+				// scales out your scalable target immediately.
+				ScaleInCooldown: aws.Int64(300),
+
+				// The amount of time, in seconds, after a scale-out activity completes before
+				// another scale-out activity can start.
+				//
+				// While the cooldown period is in effect, the capacity that has been added
+				// by the previous scale-out event that initiated the cooldown is calculated
+				// as part of the desired capacity for the next scale out. The intention is
+				// to continuously (but not excessively) scale out.
+				ScaleOutCooldown: aws.Int64(300),
+
+				// Indicates whether scale in by the target tracking scaling policy is disabled.
+				// If the value is true, scale in is disabled and the target tracking scaling
+				// policy won't remove capacity from the scalable resource. Otherwise, scale
+				// in is enabled and the target tracking scaling policy can remove capacity
+				// from the scalable resource. The default value is false.
+				DisableScaleIn: aws.Bool(false),
+			},
+		}
 	}
 
 	// Define a base set of environment variables that can be assigned to individual container definitions.
