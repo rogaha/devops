@@ -273,6 +273,18 @@ func main() {
 	//				Matcher:                    "200",
 	//			},
 	//		}
+	// 	build/cicd/internal/config/service.go
+	// 		container1 := &ecs.ContainerDefinition{
+	//		...
+	// 			HealthCheck: &ecs.HealthCheck{
+	//				Retries: aws.Int64(3),
+	//				Command: aws.StringSlice([]string{
+	//					"CMD-SHELL",
+	//					"curl -f http://localhost/ping || exit 1",
+	//				}),
+	//				Timeout:     aws.Int64(5),
+	//				Interval:    aws.Int64(60),
+	//
 	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 

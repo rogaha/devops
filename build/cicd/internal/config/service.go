@@ -32,7 +32,7 @@ const (
 	EnableServiceElb = false
 
 	// EnableServiceAutoscaling will enable all services to be deployed with an application scaling policy. This should
-	// typically be enabled for front end services that have an ELB enabled. 
+	// typically be enabled for front end services that have an ELB enabled.
 	EnableServiceAutoscaling = false
 )
 

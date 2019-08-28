@@ -2104,7 +2104,7 @@ func (infra *Infrastructure) setupAwsEcsService(log *log.Logger, cluster *AwsEcs
 						DesiredCount: aws.Int64(int64(0)),
 					})
 					if err != nil {
-						return nil, errors.Wrapf(err, "Failed to update service '%s'", ecsService.ServiceName)
+						return nil, errors.Wrapf(err, "Failed to update service '%s'", *ecsService.ServiceName)
 					}
 
 					// It may take some time for the service to scale down, so need to wait.
@@ -2130,7 +2130,10 @@ func (infra *Infrastructure) setupAwsEcsService(log *log.Logger, cluster *AwsEcs
 					Force: aws.Bool(forceDelete),
 				})
 				if err != nil {
-					return nil, errors.Wrapf(err, "Failed to delete service '%s'", ecsService.ServiceName)
+					// If you get the error 'The service cannot be stopped while it is scaled above 0.' then it's
+					// likely there is an autoscaling policy setup on the service. Disable autoscaling from the AWS
+					// Web Console and try running the deploy for the service again.
+					return nil, errors.Wrapf(err, "Failed to delete service '%s'", *ecsService.ServiceName)
 				}
 				ecsService = res.Service
 
