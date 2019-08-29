@@ -69,6 +69,13 @@ _devdeploy_ package that includes configuration for two example applications:
         AWS Lambda lets you run code without provisioning or managing servers. You pay only for the compute time you consume, 
         there is no charge when your code is not running. 
 
+    * [Build with Base Image](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/build-with-base-image) - 
+    A service that uses a separate step to build the base image. Sometimes we need to compile a bunch of libraries to 
+    support a Go library like [gopkg.in/gographics/imagick.v3/imagick](https://github.com/gographics/imagick/tree/v3.2.0/imagick). 
+    The pipeline for this example service first builds [build/docker/go-imagemagick7](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/docker/go-imagemagick7/Dockerfile)
+    which adds the stage `image` to the GitLab CI/CD pipeline. After this completes, the normal build stage is run. 
+     
+
 3. [cmd/devops](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/cmd/devops) - A tool developed to help make it 
 easy to get starting with this project. This tool will copy the example _build/cicd_ to a desired project directory 
 updating Go imports as necessary. 

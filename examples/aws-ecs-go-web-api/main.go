@@ -213,7 +213,7 @@ func main() {
 	// =========================================================================
 	// Start Redis if enabled
 	var redisClient *redis.Client
-	if cfg.Redis.Host != "-" {
+	if strings.Trim(cfg.Redis.Host, "-") != "" {
 		log.Println("main : Started : Initialize Redis")
 		redisClient = redis.NewClient(&redis.Options{
 			Addr:        cfg.Redis.Host,
