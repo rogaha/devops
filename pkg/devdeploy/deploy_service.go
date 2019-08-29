@@ -180,6 +180,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				DbName:                       "",
 				DbDriver:                     "",
 				DbDisableTLS:                 false,
+				Route53Zones:                 zones,
 				AwsEc2Vpc:                    vpc,
 				AwsEc2SecurityGroup:          securityGroup,
 				AwsSdService:                 sdService,
