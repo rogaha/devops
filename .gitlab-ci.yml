@@ -170,7 +170,7 @@ datadog-logcollector:deploy:prod:
 # The example base image.
 go-imagemagick7:setup:prod:
   <<: *build_tmpl
-  stage: build:prod
+  stage: setup:prod
   tags:
     - prod
   only:
@@ -191,7 +191,6 @@ build-with-base-image:build:prod:
   only:
     - master
     - prod
-    - prod-web-api
   dependencies:
     - 'infra:setup:prod'
     - 'go-imagemagick7:setup:prod'
