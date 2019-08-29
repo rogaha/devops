@@ -315,6 +315,8 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		infra.AwsElasticCacheCluster = nil
 	}
 
 	// Step 7: Find or create the AWS RDS database Cluster.
@@ -327,6 +329,8 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 			return nil, err
 		}
 		cfg.DBConnInfo = dbCluster.DBConnInfo
+	} else {
+		infra.AwsRdsDBCluster = nil
 	}
 
 	// Step 8: Find or create the AWS RDS database Instance.
@@ -338,6 +342,8 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 			return nil, err
 		}
 		cfg.DBConnInfo = dbInstance.DBConnInfo
+	} else {
+		infra.AwsRdsDBInstance = nil
 	}
 
 	// Step 9: Resources need to build and deploy functions.
