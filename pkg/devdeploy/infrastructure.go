@@ -118,18 +118,14 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 
 	secretID := AwsSecretID(cfg.ProjectName, cfg.Env, "infrastructure/json")
 
-	sm := secretsmanager.New(cfg.AwsCredentials.Session())
-
 	var infra *Infrastructure
-	res, err := sm.GetSecretValue(&secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretID),
-	})
+	dat, err := SecretManagerGetBinary(cfg.AwsCredentials.Session(), secretID)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
-			return nil, errors.Wrapf(err, "Failed to get value for secret id %s", secretID)
+		if errors.Cause(err) != ErrSecreteNotFound {
+			return nil, err
 		}
 	} else {
-		err = json.Unmarshal(res.SecretBinary, &infra)
+		err = json.Unmarshal(dat, &infra)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to json decode db credentials")
 		}

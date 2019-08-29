@@ -534,7 +534,7 @@ func getDatadogApiKey(cfg *devdeploy.Config) (string, error) {
 	if apiKey == "" {
 		prefixedSecretId := cfg.SecretID("datadog")
 		var err error
-		apiKey, err = devdeploy.GetAwsSecretValue(cfg.AwsCredentials, prefixedSecretId)
+		apiKey, err = devdeploy.SecretManagerGetString(cfg.AwsCredentials.Session(), prefixedSecretId)
 		if err != nil {
 			if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
 				return "", err
@@ -544,9 +544,9 @@ func getDatadogApiKey(cfg *devdeploy.Config) (string, error) {
 
 	// 3. Check AWS Secrets Manager for Datadog entry.
 	if apiKey == "" {
-		secretId := "DATADOG"
+		secretId := "datadog"
 		var err error
-		apiKey, err = devdeploy.GetAwsSecretValue(cfg.AwsCredentials, secretId)
+		apiKey, err = devdeploy.SecretManagerGetString(cfg.AwsCredentials.Session(), secretId)
 		if err != nil {
 			if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
 				return "", err

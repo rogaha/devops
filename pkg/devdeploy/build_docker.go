@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -38,6 +39,7 @@ type BuildDockerRequest struct {
 	LambdaS3Bucket string `validate:"required_with=IsLambda"`
 	TargetLayer    string `validate:"omitempty" example:"lambda"`
 
+	BaseImageTags map[string]string `validate:"omitempty"`
 	BuildArgs map[string]string `validate:"omitempty"`
 }
 
@@ -52,6 +54,8 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 		req.DockerBuildContext = "."
 	}
 
+	wkdir := req.BuildDir
+
 	var dockerFile string
 	dockerPath := filepath.Join(req.BuildDir, req.Dockerfile)
 	if _, err := os.Stat(dockerPath); err == nil {
@@ -65,59 +69,90 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 		}
 	}
 
-	// Name of the first build stage declared in the docckerFile.
-	var buildStageName string
+	type builtStage struct {
+		Image string
+		Name string
+		Args map[string]string
+		Lines []string
+		CacheTag string
+	}
+
+	var stages []*builtStage
 
 	// When the dockerFile is multistage, caching can be applied. Scan the dockerFile for the first stage.
 	// FROM golang:1.12.6-alpine3.9 AS build_base
-	dockerFilebuildArgs := make(map[string]string)
-	var buildBaseImageTag string
 	{
+		log.Printf("\tParsing build stages from %s\n", dockerPath)
+
 		file, err := os.Open(dockerPath)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer file.Close()
 
-		// List of lines in the dockerfile for the first stage. This will be used to tag the image to help ensure
-		// any changes to the lines associated with the first stage force cache to be reset.
-		var stageLines []string
+		reFrom := regexp.MustCompile(`^(?i)from `)
+		reAs := regexp.MustCompile(`(?i) as `)
+		reArg := regexp.MustCompile(`^(?i)arg `)
+
+		var curStage *builtStage
 
 		// Loop through all the lines in the Dockerfile searching for the lines associated with the first build stage.
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			lineLower := strings.ToLower(line)
+			line = reFrom.ReplaceAllString(line, "FROM ")
 
-			if strings.HasPrefix(lineLower, "from ") {
-				if buildStageName != "" {
-					// Only need to scan all the lines for the first build stage. Break when reach next FROM.
-					break
-				} else if !strings.Contains(lineLower, " as ") {
-					// Caching is only supported if the first FROM has a name.
-					log.Printf("\t\t\tSkipping stage cache, build stage not detected.\n")
-					break
+			if reFrom.MatchString(line) {
+				line = reFrom.ReplaceAllString(line, "FROM ")
+				line = reAs.ReplaceAllString(line, " AS ")
+
+				if curStage != nil {
+					stages = append(stages, curStage)
 				}
 
-				buildStageName = strings.TrimSpace(strings.Split(lineLower, " as ")[1])
-				stageLines = append(stageLines, line)
-			} else if buildStageName != "" {
-				stageLines = append(stageLines, line)
-			}
-
-			if strings.HasPrefix(lineLower, "arg ") {
-				vals := strings.Split(line, "=")
-
-				argKey := strings.TrimSpace(strings.Split(vals[0], " ")[1])
-
-				// Build args are option to set a default value.
-				var argVal string
-				if len(vals) > 1 {
-					argVal = strings.TrimSpace(vals[1])
+				curStage = &builtStage{
+					Args: make(map[string]string),
+					Lines: []string{
+						line,
+					},
 				}
 
-				dockerFilebuildArgs[argKey] = argVal
+				fromline := strings.TrimSpace(strings.Replace(line, "FROM ", "", 1))
+
+				if strings.Contains(fromline, " AS ") {
+					pts := strings.Split(fromline, " AS ")
+					curStage.Image = strings.TrimSpace(pts[0])
+
+					// Strip any trailing comments.
+					curStage.Name = strings.TrimSpace(strings.Split(pts[1], " ")[0])
+
+					log.Printf("\t\tLayer Image: '%s' AS '%s'\n", curStage.Image, curStage.Name )
+				} else {
+					// Strip any trailing comments.
+					curStage.Image = strings.TrimSpace(strings.Split(fromline, " ")[0])
+
+					log.Printf("\t\tLayer Image: '%s'\n", curStage.Image )
+				}
+
+			} else if curStage != nil {
+				curStage.Lines = append(curStage.Lines, line)
+
+				if reArg.MatchString(line) {
+					vals := strings.Split(line, "=")
+
+					argKey := strings.TrimSpace(strings.Split(vals[0], " ")[1])
+
+					// Build args are option to set a default value.
+					var argVal string
+					if len(vals) > 1 {
+						argVal = strings.TrimSpace(vals[1])
+					}
+
+					curStage.Args[argKey] = argVal
+
+					log.Printf("\t\t\tArg %s: '%s'\n", argKey, argVal)
+				}
 			}
 		}
 
@@ -125,83 +160,169 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 			return errors.WithStack(err)
 		}
 
-		// If we have detected a build stage, then generate the appropriate tag.
-		if buildStageName != "" {
-			log.Printf("\t\tFound build stage %s for caching.\n", buildStageName)
+		if curStage != nil {
+			stages = append(stages, curStage)
+		}
 
-			var layerHash string
-			switch buildStageName {
-			case "build_base_golang":
-				layerHash, err = findGoModHashForBuild(req.BuildDir)
-				if err != nil {
-					return err
+		for idx, stage := range stages {
+			stageName := strings.ToLower(stage.Name)
+
+			// If we have detected a build stage, then generate the appropriate tag.
+			if idx == 0 &&  strings.HasPrefix(stageName, "build_base_")  {
+				log.Printf("\t\tFound build stage %s for caching.\n", stage.Name)
+
+				var layerHash string
+				switch stageName {
+				case "build_base_golang":
+					layerHash, err = findGoModHashForBuild(req.BuildDir)
+					if err != nil {
+						return err
+					}
 				}
-			}
 
-			if layerHash != "" {
-				// Generate a checksum for the lines associated with the build stage.
-				buildBaseHashPts := []string{
-					fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(stageLines, "\n")))),
-					layerHash,
+				if layerHash != "" {
+					// Generate a checksum for the lines associated with the build stage.
+					buildBaseHashPts := []string{
+						fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(stage.Lines, "\n")))),
+						layerHash,
+					}
+
+					// Combine all the checksums to be used to tag the target build stage.
+					buildBaseHash := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(buildBaseHashPts, "|"))))
+
+					// New stage image tag.
+					stage.CacheTag = stage.Name + "-" + buildBaseHash[0:8]
+					log.Printf("\t\t\tTag %s\n", stage.CacheTag)
 				}
-
-				// Combine all the checksums to be used to tag the target build stage.
-				buildBaseHash := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(buildBaseHashPts, "|"))))
-
-				// New stage image tag.
-				buildBaseImageTag = buildStageName + "-" + buildBaseHash[0:8]
 			}
 		}
 	}
 
-	// If the Dockerfile contains an optional build arg of GOPROXY then try to copy value from env.
-	if _, ok := dockerFilebuildArgs["GOPROXY"]; ok {
-		// Check to see if the value is set as an env var.
-		if ev := os.Getenv("GOPROXY"); ev != "" {
-			// Only add the build arg if one wasn't specifically defined.
-			if _, ok := req.BuildArgs["GOPROXY"]; !ok {
-				req.BuildArgs["GOPROXY"] = ev
+	// Check to see if we can pass the env var GOPROXY from the os as a build arg.
+	{
+		log.Printf("\tChecking stages for GOPROXY arg\n")
+
+		var dockerFileHasGoProxyArg bool
+		for _, stage := range stages {
+			for k, v := range stage.Args {
+				if k == "GOPROXY" {
+					dockerFileHasGoProxyArg = true
+
+					if stage.Name != "" {
+						log.Printf("\t\tFound arg %s in stage %s with default value '%s'\n", k, stage.Name, v)
+					} else {
+						log.Printf("\t\tFound arg %s with default value '%s'\n", k, v)
+					}
+					break
+				}
+			}
+			if dockerFileHasGoProxyArg {
+				break
 			}
 		}
+
+		// If the Dockerfile contains an optional build arg of GOPROXY then try to copy value from env.
+		if dockerFileHasGoProxyArg {
+			// Check to see if the value is set as an env var.
+			if ev := os.Getenv("GOPROXY"); ev != "" {
+				log.Printf("\t\tOS environment variable GOPROXY set to '%s'\n", ev)
+
+				// Only add the build arg if one wasn't specifically defined.
+				if bv, ok := req.BuildArgs["GOPROXY"]; ok {
+					log.Printf("\t\t\tBuild arg already set to '%s'\n", bv)
+				} else {
+					req.BuildArgs["GOPROXY"] = ev
+					log.Printf("\t\t\tAdding build arg\n")
+				}
+			} else {
+				log.Printf("\t\tOS environment variable GOPROXY not set\n")
+			}
+		}
+	}
+
+	var ciLoginCmd []string
+	var ciRegImg string
+	ciReg := os.Getenv("CI_REGISTRY")
+	if ciReg != "" {
+		ciLoginCmd = []string{
+			"docker", "login",
+			"-u", os.Getenv("CI_REGISTRY_USER"),
+			"-p", os.Getenv("CI_REGISTRY_PASSWORD"),
+			ciReg}
+		ciRegImg = os.Getenv("CI_REGISTRY_IMAGE")
 	}
 
 	var cmds [][]string
 
+	// Check to see if any of the containers reference other defined Dockerfiles for the project. The must be referenced
+	// from the root build directory.
+	if req.BaseImageTags != nil && len(req.BaseImageTags) > 0 {
+		if ciReg != "" && len(ciLoginCmd) > 0 {
+			cmds = append(cmds, ciLoginCmd)
+		}
+
+		for bt, bi := range req.BaseImageTags {
+			var (
+				buildBaseImage string
+			)
+			if ciReg != "" {
+				buildBaseImage = ciRegImg + ":" + bi
+				cmds = append(cmds, []string{"docker", "pull", buildBaseImage})
+			} else {
+				buildBaseImage = req.ProjectName + ":" + bi
+			}
+
+			// Retag the image locally so the build can keep the same reference in the dockerFile.
+			cmds = append(cmds, []string{"docker", "tag", buildBaseImage, bt})
+		}
+	}
+
 	// Enabling caching of the first build stage defined in the dockerFile.
-	var buildBaseImage string
-	if !req.NoCache && buildBaseImageTag != "" {
-		var pushTargetImg bool
-		if ciReg := os.Getenv("CI_REGISTRY"); ciReg != "" {
-			cmds = append(cmds, []string{
-				"docker", "login",
-				"-u", os.Getenv("CI_REGISTRY_USER"),
-				"-p", os.Getenv("CI_REGISTRY_PASSWORD"),
-				ciReg})
+	var cacheFrom []string
+	if !req.NoCache {
+		for _, stage := range stages {
+			if stage.CacheTag == "" {
+				continue
+			}
 
-			buildBaseImage = os.Getenv("CI_REGISTRY_IMAGE") + ":" + buildBaseImageTag
-			pushTargetImg = true
-		} else {
-			buildBaseImage = req.ProjectName + ":" + req.Env + "-" + req.Name + "-" + buildBaseImageTag
-		}
+			var (
+				pushTargetImg  bool
+				buildBaseImage string
+			)
+			if ciReg != "" {
+				cmds = append(cmds, []string{
+					"docker", "login",
+					"-u", os.Getenv("CI_REGISTRY_USER"),
+					"-p", os.Getenv("CI_REGISTRY_PASSWORD"),
+					ciReg})
 
-		cmds = append(cmds, []string{"docker", "pull", buildBaseImage})
+				buildBaseImage = ciRegImg + ":" + stage.CacheTag
+				pushTargetImg = true
+			} else {
+				buildBaseImage = req.ProjectName + ":" + req.Env + "-" + req.Name + "-" + stage.CacheTag
+			}
 
-		baseBuildCmd := []string{
-			"docker", "build",
-			"--file=" + dockerFile,
-			"--cache-from", buildBaseImage,
-			"-t", buildBaseImage,
-			"--target", buildStageName,
-		}
-		for k, v := range req.BuildArgs {
-			baseBuildCmd = append(baseBuildCmd, "--build-arg", k+"="+v)
-		}
-		baseBuildCmd = append(baseBuildCmd, req.DockerBuildContext)
+			cmds = append(cmds, []string{"docker", "pull", buildBaseImage})
 
-		cmds = append(cmds, baseBuildCmd)
+			baseBuildCmd := []string{
+				"docker", "build",
+				"--file=" + dockerFile,
+				"--cache-from", buildBaseImage,
+				"-t", buildBaseImage,
+				"--target", stage.Name,
+			}
+			for k, v := range req.BuildArgs {
+				baseBuildCmd = append(baseBuildCmd, "--build-arg", k+"="+v)
+			}
+			baseBuildCmd = append(baseBuildCmd, req.DockerBuildContext)
 
-		if pushTargetImg {
-			cmds = append(cmds, []string{"docker", "push", buildBaseImage})
+			cmds = append(cmds, baseBuildCmd)
+
+			if pushTargetImg {
+				cmds = append(cmds, []string{"docker", "push", buildBaseImage})
+			}
+
+			cacheFrom = append(cacheFrom, buildBaseImage)
 		}
 	}
 
@@ -226,8 +347,10 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 	// Append additional build flags.
 	if req.NoCache {
 		buildCmd = append(buildCmd, "--no-cache")
-	} else if buildBaseImage != "" {
-		buildCmd = append(buildCmd, "--cache-from", buildBaseImage)
+	} else {
+		for _, ct := range cacheFrom {
+			buildCmd = append(buildCmd, "--cache-from", ct)
+		}
 	}
 
 	// Finally append the build context as the current directory since os.Exec will use the project root as
@@ -256,12 +379,13 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 			}
 
 		} else {
-			cmds = append(cmds, req.ReleaseDockerLoginCmd)
+			if len(req.ReleaseDockerLoginCmd) > 0 {
+				cmds = append(cmds, req.ReleaseDockerLoginCmd)
+			}
 			cmds = append(cmds, []string{"docker", "push", req.ReleaseImage})
 		}
 	}
 
-	wkdir := req.BuildDir
 	for _, cmd := range cmds {
 		var logCmd string
 		if len(cmd) >= 2 && cmd[1] == "login" {
@@ -272,7 +396,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 
 		log.Printf("\t\t%s\n", logCmd)
 
-		if strings.ToLower(cmd[0]) == "cd" {
+		if len(cmd) > 0 && strings.ToLower(cmd[0]) == "cd" {
 			log.Printf("\t\t\tChanging directory\n")
 			wkdir = cmd[1]
 			continue

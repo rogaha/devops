@@ -10,7 +10,7 @@ import (
 // BuildLambdaForTargetEnv builds a lambda function using the defined Dockerfile and pushes the zip to AWS S3.
 func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *ProjectFunction, noCache, noPush bool) error {
 
-	log.Printf("Build service %s for environment %s\n", targetFunc.Name, cfg.Env)
+	log.Printf("Build lambda %s for environment %s\n", targetFunc.Name, cfg.Env)
 
 	if targetFunc.DockerBuildDir == "" {
 		targetFunc.DockerBuildDir = cfg.ProjectRoot
@@ -36,6 +36,7 @@ func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *ProjectFu
 		BuildDir:           targetFunc.DockerBuildDir,
 		Dockerfile:         targetFunc.Dockerfile,
 		DockerBuildContext: targetFunc.DockerBuildContext,
+		BaseImageTags: targetFunc.BaseImageTags,
 		TargetLayer:        targetFunc.DockerBuildTargetLayer,
 
 		AwsCredentials: cfg.AwsCredentials,

@@ -1,6 +1,7 @@
 package devdeploy
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"github.com/aws/aws-sdk-go/service/cloudwatchevents"
@@ -73,6 +74,22 @@ func (db DBConnInfo) URL() string {
 	return dbUrl.String()
 }
 
+// ProjectImage configures an image for build.
+type ProjectImage struct {
+	// Required flags.
+	Name           string `validate:"required" example:"web-api"`
+	Dockerfile     string `validate:"required" example:"./cmd/web-api/Dockerfile"`
+	DockerBuildDir string `validate:"required"`
+	ReleaseTag     string `validate:"required"`
+	CodeDir        string `validate:"required"`
+
+	// Optional flags.
+	DockerBuildContext     string `validate:"omitempty" example:"."`
+	DockerBuildTargetLayer string `validate:"omitempty" example:"lambda"`
+	DockerBuildArgs        map[string]string `validate:"omitempty"`
+	BaseImageTags map[string]string `validate:"omitempty"`
+}
+
 // ProjectFunction configures a function for build and deploy.
 type ProjectFunction struct {
 	// Required flags.
@@ -96,8 +113,12 @@ type ProjectFunction struct {
 	// Optional flags.
 	DockerBuildContext     string `validate:"omitempty" example:"."`
 	DockerBuildTargetLayer string `validate:"omitempty" example:"lambda"`
-	DockerBuildArgs        map[string]string
+	DockerBuildArgs        map[string]string `validate:"omitempty"`
+	BaseImageTags map[string]string `validate:"omitempty"`
 	EnableVPC              bool `validate:"omitempty"`
+
+	// Passed to AwsEcsTaskDefinition.PreRegister
+	CustomVariables map[string]interface{}
 
 	// List of Cloudwatch event targets.
 	AwsCloudwatchEventRules []*AwsCloudwatchEventRule `validate:"omitempty"`
@@ -116,10 +137,10 @@ type ProjectService struct {
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
 
 	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
-	AwsEcsService *AwsEcsService `validate:"required"`
+	AwsEcsService *AwsEcsService  `validate:"required"`
 
 	// AwsEcsTaskDefinition defines the task definition.
-	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
+	AwsEcsTaskDefinition *AwsEcsTaskDefinition  `validate:"required"`
 
 	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
 	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
@@ -151,8 +172,13 @@ type ProjectService struct {
 	StaticFilesS3Prefix    string   `validate:"omitempty"`
 	DockerBuildContext     string   `validate:"omitempty" example:"."`
 	DockerBuildTargetLayer string   `validate:"omitempty" example:"lambda"`
-	DockerBuildArgs        map[string]string
+	DockerBuildArgs        map[string]string `validate:"omitempty"`
+	BaseImageTags map[string]string `validate:"omitempty"`
 	ReleaseImage           string `validate:"omitempty"`
+	BuildOnly              bool     `validate:"omitempty"`
+
+	// Passed to AwsEcsTaskDefinition.PreRegister
+	CustomVariables map[string]interface{}
 }
 
 // Tag describes a key/value pair that will help identify a resource.
@@ -1380,11 +1406,58 @@ type AwsEcsTaskDefinition struct {
 	// The task definition input defined.
 	RegisterInput *ecs.RegisterTaskDefinitionInput `validate:"required"`
 
-	// Optional to update the placeholders before they are replaced in the task definition.
-	UpdatePlaceholders func(placeholders map[string]string) error
-
 	// Optional to provide additional details to the register input.
-	PreRegister func(input *ecs.RegisterTaskDefinitionInput) error
+	PreRegister func(input *ecs.RegisterTaskDefinitionInput, vars AwsEcsServiceDeployVariables) error
+}
+
+// AwsEcsServiceDeployDetails defines the details that can be used as env of placeholders that can be used in task
+// definition and replaced on deployment.
+type AwsEcsServiceDeployVariables struct {
+	ProjectName string
+	ServiceName string
+	ServiceBaseUrl string
+	PrimaryHostname string
+	AlternativeHostnames []string
+	ReleaseImage string
+	AwsRegion string
+	AwsLogGroupName string
+	AwsS3BucketNamePrivate string
+	AwsS3BucketNamePublic string
+	Env string
+	HTTPHost string
+	HTTPSHost string
+	HTTPSEnabled bool
+	StaticFilesS3Enabled bool
+	StaticFilesS3Prefix string
+	StaticFilesCloudfrontEnabled bool
+	CacheHost string
+	DbHost string
+	DbUser string
+	DbPass string
+	DbName string
+	DbDriver string
+	DbDisableTLS bool
+	Route53Zones map[string][]string
+	AwsEc2Vpc *AwsEc2VpcResult
+	AwsEc2SecurityGroup *AwsEc2SecurityGroupResult
+	AwsSdService *AwsSdServiceResult
+	AwsElbLoadBalancer *AwsElbLoadBalancerResult
+	AwsEcsCluster *AwsEcsClusterResult
+	ProjectService *ProjectService
+}
+
+// EncodeRoute53Zones returns the base64 json encoded string of Route53Zones that can be used as an envirnment variable.
+// This is to be used by the service for maintaining A records when new tasks are spun up or down.
+func (vars AwsEcsServiceDeployVariables) EncodeRoute53Zones() string {
+	if len(vars.Route53Zones) == 0 {
+		return ""
+	}
+
+	dat, err := json.Marshal(vars.Route53Zones)
+	if err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(dat)
 }
 
 // AwsEcsTaskDefinitionResult wraps *ecs.TaskDefinition.
@@ -1393,6 +1466,21 @@ type AwsEcsTaskDefinitionResult struct {
 
 	// The md5 hash of the input used to create the Task Definition.
 	InputHash string
+}
+
+// Input returns the AWS input for ecs.RegisterTaskDefinition.
+func (m *AwsEcsTaskDefinition) Input(vars AwsEcsServiceDeployVariables) (*ecs.RegisterTaskDefinitionInput, error) {
+
+	input := m.RegisterInput
+
+
+	if m.PreRegister != nil {
+		if err := m.PreRegister(input, vars); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
 }
 
 // CreateInput returns the AWS input for ecs.CreateService.

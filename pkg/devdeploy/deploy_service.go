@@ -2,15 +2,12 @@ package devdeploy
 
 import (
 	"compress/gzip"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +34,11 @@ import (
 func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *ProjectService) error {
 
 	log.Printf("Deploy service %s to environment %s\n", targetService.Name, cfg.Env)
+
+	if targetService.BuildOnly {
+		log.Printf("\t%s\tBuild only, nothing to deploy\n", Success)
+		return nil
+	}
 
 	infra, err := NewInfrastructure(cfg)
 	if err != nil {
@@ -153,61 +155,46 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		{
 			log.Println("\t\tFind and replace placeholders")
 
-			// List of placeholders that can be used in task definition and replaced on deployment.
-			placeholders := map[string]string{
-				"{SERVICE}":               targetService.Name,
-				"{RELEASE_IMAGE}":         targetService.ReleaseImage,
-				"{AWS_DEFAULT_REGION}":    cfg.AwsCredentials.Region,
-				"{AWS_LOGS_GROUP}":        targetService.AwsCloudWatchLogGroup.LogGroupName,
-				"{AWS_S3_BUCKET_PRIVATE}": cfg.AwsS3BucketPrivate.BucketName,
-				"{AWS_S3_BUCKET_PUBLIC}":  cfg.AwsS3BucketPublic.BucketName,
-				"{ENV}":                   cfg.Env,
-				"{HTTP_HOST}":             "0.0.0.0:80",
-				"{HTTPS_HOST}":            "", // Not enabled by default
-				"{HTTPS_ENABLED}":         "false",
-
-				"{APP_PROJECT}":  cfg.ProjectName,
-				"{APP_BASE_URL}": "", // Not set by default, requires a hostname to be defined.
-				"{HOST_PRIMARY}": targetService.ServiceHostPrimary,
-				"{HOST_NAMES}":   strings.Join(targetService.ServiceHostNames, ","),
-
-				"{STATIC_FILES_S3_ENABLED}":         "false",
-				"{STATIC_FILES_S3_PREFIX}":          targetService.StaticFilesS3Prefix,
-				"{STATIC_FILES_CLOUDFRONT_ENABLED}": "false",
-				"{STATIC_FILES_IMG_RESIZE_ENABLED}": "false",
-
-				"{CACHE_HOST}": "-", // Not enabled by default
-
-				"{DB_HOST}":        "",
-				"{DB_USER}":        "",
-				"{DB_PASS}":        "",
-				"{DB_DATABASE}":    "",
-				"{DB_DRIVER}":      "",
-				"{DB_DISABLE_TLS}": "",
-
-				"{" + ENV_KEY_ECS_CLUSTER + "}":             targetService.AwsEcsCluster.ClusterName,
-				"{" + ENV_KEY_ECS_SERVICE + "}":             targetService.AwsEcsService.ServiceName,
-				"{" + ENV_KEY_ROUTE53_ZONES + "}":           "",
-				"{" + ENV_KEY_ROUTE53_UPDATE_TASK_IPS + "}": "false",
-
-				// Directly map GitLab CICD env variables set during deploy.
-				"{CI_COMMIT_REF_NAME}":     os.Getenv("CI_COMMIT_REF_NAME"),
-				"{CI_COMMIT_REF_SLUG}":     os.Getenv("CI_COMMIT_REF_SLUG"),
-				"{CI_COMMIT_SHA}":          os.Getenv("CI_COMMIT_SHA"),
-				"{CI_COMMIT_TAG}":          os.Getenv("CI_COMMIT_TAG"),
-				"{CI_COMMIT_JOB_ID}":       os.Getenv("CI_COMMIT_JOB_ID"),
-				"{CI_COMMIT_JOB_URL}":      os.Getenv("CI_COMMIT_JOB_URL"),
-				"{CI_COMMIT_PIPELINE_ID}":  os.Getenv("CI_COMMIT_PIPELINE_ID"),
-				"{CI_COMMIT_PIPELINE_URL}": os.Getenv("CI_COMMIT_PIPELINE_URL"),
+			vars := AwsEcsServiceDeployVariables{
+				ProjectName: cfg.ProjectName,
+				ServiceName:  targetService.Name,
+				ServiceBaseUrl: "",
+				PrimaryHostname: targetService.ServiceHostPrimary,
+				AlternativeHostnames: targetService.ServiceHostNames,
+				ReleaseImage: targetService.ReleaseImage,
+				AwsRegion: cfg.AwsCredentials.Region,
+				AwsLogGroupName:  targetService.AwsCloudWatchLogGroup.LogGroupName,
+				AwsS3BucketNamePrivate :  cfg.AwsS3BucketPrivate.BucketName,
+				AwsS3BucketNamePublic: cfg.AwsS3BucketPublic.BucketName,
+				Env:  cfg.Env,
+				HTTPHost: "0.0.0.0:80",
+				HTTPSHost: "",
+				HTTPSEnabled: false,
+				StaticFilesS3Enabled: false,
+				StaticFilesS3Prefix:          targetService.StaticFilesS3Prefix,
+				StaticFilesCloudfrontEnabled: false,
+				CacheHost: "",
+				DbHost: "",
+				DbUser: "",
+				DbPass: "",
+				DbName: "",
+				DbDriver: "",
+				DbDisableTLS: false,
+				AwsEc2Vpc: vpc,
+				AwsEc2SecurityGroup: securityGroup,
+				AwsSdService: sdService,
+				AwsElbLoadBalancer: elb,
+				AwsEcsCluster: ecsCluster,
+				ProjectService: targetService,
 			}
 
 			// For HTTPS support.
 			if targetService.EnableHTTPS {
-				placeholders["{HTTPS_ENABLED}"] = "true"
+				vars.HTTPSEnabled = true
 
 				// When there is no Elastic Load Balancer, we need to terminate HTTPS on the app.
 				if elb == nil {
-					placeholders["{HTTPS_HOST}"] = "0.0.0.0:443"
+					vars.HTTPSHost = "0.0.0.0:443"
 				}
 			}
 
@@ -219,18 +206,17 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				} else {
 					appSchema = "http"
 				}
-
-				placeholders["{APP_BASE_URL}"] = fmt.Sprintf("%s://%s/", appSchema, targetService.ServiceHostPrimary)
+				vars.ServiceBaseUrl = fmt.Sprintf("%s://%s/", appSchema, targetService.ServiceHostPrimary)
 			}
 
 			// Static files served from S3.
 			if targetService.StaticFilesS3Prefix != "" {
-				placeholders["{STATIC_FILES_S3_ENABLED}"] = "true"
+				vars.StaticFilesS3Enabled = true
 			}
 
 			// Static files served from CloudFront.
 			if cfg.AwsS3BucketPublic.CloudFront != nil {
-				placeholders["{STATIC_FILES_CLOUDFRONT_ENABLED}"] = "true"
+				vars.StaticFilesCloudfrontEnabled = true
 			}
 
 			var dbConnInfo *DBConnInfo
@@ -250,16 +236,14 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 			// When db is set, update the placeholders.
 			if dbConnInfo != nil {
-				placeholders["{DB_HOST}"] = dbConnInfo.Host
-				placeholders["{DB_USER}"] = dbConnInfo.User
-				placeholders["{DB_PASS}"] = dbConnInfo.Pass
-				placeholders["{DB_DATABASE}"] = dbConnInfo.Database
-				placeholders["{DB_DRIVER}"] = dbConnInfo.Driver
+				vars.DbHost = dbConnInfo.Host
+				vars.DbUser = dbConnInfo.User
+				vars.DbPass = dbConnInfo.Pass
+				vars.DbName = dbConnInfo.Database
+				vars.DbDriver = dbConnInfo.Driver
 
 				if dbConnInfo.DisableTLS {
-					placeholders["{DB_DISABLE_TLS}"] = "true"
-				} else {
-					placeholders["{DB_DISABLE_TLS}"] = "false"
+					vars.DbDisableTLS = true
 				}
 			}
 
@@ -280,104 +264,11 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				} else {
 					return errors.New("Unable to determine cache host from cache cluster")
 				}
-				placeholders["{CACHE_HOST}"] = cacheHost
+				vars.CacheHost = cacheHost
 			}
 
-			// Append the Route53 Zones as an env var to be used by the service for maintaining A records when new tasks
-			// are spun up or down.
-			if len(zones) > 0 {
-				dat, err := json.Marshal(zones)
-				if err != nil {
-					return errors.Wrapf(err, "failed to json marshal zones")
-				}
-
-				placeholders["{"+ENV_KEY_ROUTE53_ZONES+"}"] = base64.RawURLEncoding.EncodeToString(dat)
-
-				// When no Elastic Load Balance is used, tasks need to be able to directly update the Route 53 records.
-				if targetService.AwsElbLoadBalancer == nil {
-					placeholders["{"+ENV_KEY_ROUTE53_UPDATE_TASK_IPS+"}"] = "true"
-				}
-			}
-
-			// Execute the custom function to update the placeholder key/values if one is defined.
-			if targetService.AwsEcsTaskDefinition.UpdatePlaceholders != nil {
-				err = targetService.AwsEcsTaskDefinition.UpdatePlaceholders(placeholders)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Json encode the task definition so the place holders can easily be replaced with no reflection.
-			jsonB, err := json.Marshal(targetService.AwsEcsTaskDefinition.RegisterInput)
-			if err != nil {
-				return err
-			}
-			jsonStr := string(jsonB)
-
-			// Loop through all the placeholders and create a list of keys to search json.
-			var pks []string
-			for k, _ := range placeholders {
-				pks = append(pks, k)
-			}
-
-			// Replace placeholders used in the JSON task definition.
-			{
-				// Generate new regular expression for finding placeholders.
-				expr := "(" + strings.Join(pks, "|") + ")"
-				r, err := regexp.Compile(expr)
-				if err != nil {
-					return err
-				}
-
-				matches := r.FindAllString(jsonStr, -1)
-
-				if len(matches) > 0 {
-					log.Println("\t\tUpdating placeholders.")
-
-					replaced := make(map[string]bool)
-					for _, m := range matches {
-						if replaced[m] {
-							continue
-						}
-						replaced[m] = true
-
-						newVal := placeholders[m]
-						log.Printf("\t\t\t%s -> %s", m, newVal)
-						jsonStr = strings.Replace(jsonStr, m, newVal, -1)
-					}
-				}
-			}
-
-			// Replace placeholders defined in task def but not here from env vars.
-			{
-				r, err := regexp.Compile(`{\b(\w*)\b}`)
-				if err != nil {
-					return err
-				}
-
-				matches := r.FindAllString(jsonStr, -1)
-				if len(matches) > 0 {
-					log.Println("\t\tSearching for placeholders in env variables.")
-
-					replaced := make(map[string]bool)
-					for _, m := range matches {
-						if replaced[m] {
-							continue
-						}
-						replaced[m] = true
-
-						envKey := strings.Trim(m, "{}")
-						newVal := os.Getenv(envKey)
-						log.Printf("\t\t\t%s -> %s", m, newVal)
-						jsonStr = strings.Replace(jsonStr, m, newVal, -1)
-					}
-				}
-			}
-			jsonB = []byte(jsonStr)
-
-			log.Println("\t\tParse JSON to task definition.")
-
-			taskDefInput, err = ParseTaskDefinitionInput(jsonB)
+			// Get the task input and execute any defined PreRegister method.
+			taskDefInput, err  = targetService.AwsEcsTaskDefinition.Input(vars)
 			if err != nil {
 				return err
 			}

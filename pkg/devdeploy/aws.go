@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
@@ -88,20 +87,6 @@ func GetAwsCredentialsFromEnv(targetEnv string) (AwsCredentials, error) {
 	//os.Setenv("AWS_DEFAULT_REGION", creds.Region)
 
 	return creds, nil
-}
-
-// GetAwsSecretValue returns the string value for a secret stored in AWS Secrets Manager.
-func GetAwsSecretValue(creds AwsCredentials, secretId string) (string, error) {
-	svc := secretsmanager.New(creds.Session())
-
-	res, err := svc.GetSecretValue(&secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretId),
-	})
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to get value for secret id %s", secretId)
-	}
-
-	return string(res.SecretBinary), nil
 }
 
 // SyncPublicS3Files copies the local files from the static directory to s3 with public-read enabled.
