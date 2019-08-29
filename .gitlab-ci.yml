@@ -179,6 +179,8 @@ go-imagemagick7:image:prod:
   only:
     - master
     - prod
+  dependencies:
+    - 'infra:setup:prod'
   variables:
     TARGET_ENV: 'prod'
     TARGET_TYPE: 'image'
@@ -195,8 +197,7 @@ build-with-base-image:build:prod:
     - master
     - prod
   dependencies:
-    - 'infra:setup:prod'
-    - 'go-imagemagick7:setup:prod'
+    - 'go-imagemagick7:image:prod'
   variables:
     TARGET_ENV: 'prod'
     TARGET_TYPE: 'service'
