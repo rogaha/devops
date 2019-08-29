@@ -412,7 +412,7 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 		ctx.AwsEcsTaskDefinition = &devdeploy.AwsEcsTaskDefinition{
 			RegisterInput: taskDef,
 			PreRegister: func(input *ecs.RegisterTaskDefinitionInput, vars devdeploy.AwsEcsServiceDeployVariables) error {
-				container1.Environment = append(container1.Environment,
+				input.ContainerDefinitions[0].Environment = append(input.ContainerDefinitions[0].Environment,
 					ecsKeyValuePair("WEB_API_SERVICE_HOST", vars.HTTPHost),
 					ecsKeyValuePair("WEB_API_SERVICE_HTTPS_HOST", vars.HTTPSHost),
 					ecsKeyValuePair("WEB_API_SERVICE_ENABLE_HTTPS", strconv.FormatBool(vars.HTTPSEnabled)),
@@ -434,7 +434,7 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 
 				// When no Elastic Load Balance is used, tasks need to be able to directly update the Route 53 records.
 				if vars.AwsElbLoadBalancer == nil {
-					container1.Environment = append(container1.Environment,
+					input.ContainerDefinitions[0].Environment = append(input.ContainerDefinitions[0].Environment,
 						ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_ZONES, vars.EncodeRoute53Zones()),
 						ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_UPDATE_TASK_IPS, "true"))
 				}
