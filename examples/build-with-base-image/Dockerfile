@@ -1,5 +1,5 @@
 # LAYER: BASE
-FROM build/docker/go-imagemagic7 AS build_base_golang
+FROM build/docker/go-imagemagic7 AS build_example_base
 
 LABEL maintainer="lee@geeksinthewoods.com"
 

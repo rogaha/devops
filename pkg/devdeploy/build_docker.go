@@ -174,9 +174,21 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 				var layerHash string
 				switch stageName {
 				case "build_base_golang":
-					layerHash, err = findGoModHashForBuild(req.BuildDir)
-					if err != nil {
-						return err
+
+					// Ensure the first stage actually includes `RUN go mod download`
+					var hasGoModDownload bool
+					for _, l := range stage.Lines {
+						if strings.Contains(l, "go mod download") {
+							hasGoModDownload = true
+							break
+						}
+					}
+
+					if hasGoModDownload {
+						layerHash, err = findGoModHashForBuild(req.BuildDir)
+						if err != nil {
+							return err
+						}
 					}
 				}
 

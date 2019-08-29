@@ -10,11 +10,9 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudfront"
 	"github.com/aws/aws-sdk-go/service/rds"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
@@ -536,7 +534,7 @@ func getDatadogApiKey(cfg *devdeploy.Config) (string, error) {
 		var err error
 		apiKey, err = devdeploy.SecretManagerGetString(cfg.AwsCredentials.Session(), prefixedSecretId)
 		if err != nil {
-			if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
+			if errors.Cause(err) != devdeploy.ErrSecreteNotFound {
 				return "", err
 			}
 		}
@@ -548,7 +546,7 @@ func getDatadogApiKey(cfg *devdeploy.Config) (string, error) {
 		var err error
 		apiKey, err = devdeploy.SecretManagerGetString(cfg.AwsCredentials.Session(), secretId)
 		if err != nil {
-			if aerr, ok := errors.Cause(err).(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
+			if errors.Cause(err) != devdeploy.ErrSecreteNotFound {
 				return "", err
 			}
 		}
