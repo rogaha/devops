@@ -80,7 +80,7 @@ func BuildServiceForTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		BuildDir:           targetService.DockerBuildDir,
 		Dockerfile:         targetService.Dockerfile,
 		DockerBuildContext: targetService.DockerBuildContext,
-		BaseImageTags: targetService.BaseImageTags,
+		BaseImageTags:      targetService.BaseImageTags,
 		TargetLayer:        targetService.DockerBuildTargetLayer,
 
 		ReleaseDockerLoginCmd: ecrDockerLoginCmd,

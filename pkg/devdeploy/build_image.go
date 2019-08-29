@@ -47,7 +47,7 @@ func BuildImageForTargetEnv(log *log.Logger, cfg *Config, targetImage *ProjectIm
 		BuildDir:           targetImage.DockerBuildDir,
 		Dockerfile:         targetImage.Dockerfile,
 		DockerBuildContext: targetImage.DockerBuildContext,
-		BaseImageTags: targetImage.BaseImageTags,
+		BaseImageTags:      targetImage.BaseImageTags,
 		TargetLayer:        targetImage.DockerBuildTargetLayer,
 
 		ReleaseDockerLoginCmd: releaseDockerLoginCmd,

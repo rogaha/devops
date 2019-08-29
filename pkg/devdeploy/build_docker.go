@@ -40,7 +40,7 @@ type BuildDockerRequest struct {
 	TargetLayer    string `validate:"omitempty" example:"lambda"`
 
 	BaseImageTags map[string]string `validate:"omitempty"`
-	BuildArgs map[string]string `validate:"omitempty"`
+	BuildArgs     map[string]string `validate:"omitempty"`
 }
 
 // BuildDocker executes the docker build commands and either pushes the image to ECR or uploads a zip to S3 for
@@ -70,10 +70,10 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 	}
 
 	type builtStage struct {
-		Image string
-		Name string
-		Args map[string]string
-		Lines []string
+		Image    string
+		Name     string
+		Args     map[string]string
+		Lines    []string
 		CacheTag string
 	}
 
@@ -127,12 +127,12 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 					// Strip any trailing comments.
 					curStage.Name = strings.TrimSpace(strings.Split(pts[1], " ")[0])
 
-					log.Printf("\t\tLayer Image: '%s' AS '%s'\n", curStage.Image, curStage.Name )
+					log.Printf("\t\tLayer Image: '%s' AS '%s'\n", curStage.Image, curStage.Name)
 				} else {
 					// Strip any trailing comments.
 					curStage.Image = strings.TrimSpace(strings.Split(fromline, " ")[0])
 
-					log.Printf("\t\tLayer Image: '%s'\n", curStage.Image )
+					log.Printf("\t\tLayer Image: '%s'\n", curStage.Image)
 				}
 
 			} else if curStage != nil {
@@ -168,7 +168,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 			stageName := strings.ToLower(stage.Name)
 
 			// If we have detected a build stage, then generate the appropriate tag.
-			if idx == 0 &&  strings.HasPrefix(stageName, "build_base_")  {
+			if idx == 0 && strings.HasPrefix(stageName, "build_base_") {
 				log.Printf("\t\tFound build stage %s for caching.\n", stage.Name)
 
 				var layerHash string

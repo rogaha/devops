@@ -84,10 +84,10 @@ type ProjectImage struct {
 	CodeDir        string `validate:"required"`
 
 	// Optional flags.
-	DockerBuildContext     string `validate:"omitempty" example:"."`
-	DockerBuildTargetLayer string `validate:"omitempty" example:"lambda"`
+	DockerBuildContext     string            `validate:"omitempty" example:"."`
+	DockerBuildTargetLayer string            `validate:"omitempty" example:"lambda"`
 	DockerBuildArgs        map[string]string `validate:"omitempty"`
-	BaseImageTags map[string]string `validate:"omitempty"`
+	BaseImageTags          map[string]string `validate:"omitempty"`
 }
 
 // ProjectFunction configures a function for build and deploy.
@@ -111,11 +111,11 @@ type ProjectFunction struct {
 	AwsIamPolicy *AwsIamPolicy `validate:"required"`
 
 	// Optional flags.
-	DockerBuildContext     string `validate:"omitempty" example:"."`
-	DockerBuildTargetLayer string `validate:"omitempty" example:"lambda"`
+	DockerBuildContext     string            `validate:"omitempty" example:"."`
+	DockerBuildTargetLayer string            `validate:"omitempty" example:"lambda"`
 	DockerBuildArgs        map[string]string `validate:"omitempty"`
-	BaseImageTags map[string]string `validate:"omitempty"`
-	EnableVPC              bool `validate:"omitempty"`
+	BaseImageTags          map[string]string `validate:"omitempty"`
+	EnableVPC              bool              `validate:"omitempty"`
 
 	// Passed to AwsEcsTaskDefinition.PreRegister
 	CustomVariables map[string]interface{}
@@ -137,10 +137,10 @@ type ProjectService struct {
 	AwsEcsCluster *AwsEcsCluster `validate:"required"`
 
 	// AwsEcsService defines the name of the ecs service and the details needed to create doesn't exist.
-	AwsEcsService *AwsEcsService  `validate:"required"`
+	AwsEcsService *AwsEcsService `validate:"required"`
 
 	// AwsEcsTaskDefinition defines the task definition.
-	AwsEcsTaskDefinition *AwsEcsTaskDefinition  `validate:"required"`
+	AwsEcsTaskDefinition *AwsEcsTaskDefinition `validate:"required"`
 
 	// AwsEcsExecutionRole defines the name of the iam execution role for ecs task and the detailed needed to create doesn't exist.
 	// This role executes ECS actions such as pulling the image and storing the application logs in cloudwatch.
@@ -165,17 +165,17 @@ type ProjectService struct {
 	AwsSdPrivateDnsNamespace *AwsSdPrivateDnsNamespace `validate:"omitempty"`
 
 	// Optional flags.
-	EnableHTTPS            bool     `validate:"omitempty"`
-	ServiceHostPrimary     string   `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
-	ServiceHostNames       []string `validate:"omitempty,dive,fqdn"`
-	StaticFilesDir         string   `validate:"omitempty" example:"./cmd/web-api"`
-	StaticFilesS3Prefix    string   `validate:"omitempty"`
-	DockerBuildContext     string   `validate:"omitempty" example:"."`
-	DockerBuildTargetLayer string   `validate:"omitempty" example:"lambda"`
+	EnableHTTPS            bool              `validate:"omitempty"`
+	ServiceHostPrimary     string            `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
+	ServiceHostNames       []string          `validate:"omitempty,dive,fqdn"`
+	StaticFilesDir         string            `validate:"omitempty" example:"./cmd/web-api"`
+	StaticFilesS3Prefix    string            `validate:"omitempty"`
+	DockerBuildContext     string            `validate:"omitempty" example:"."`
+	DockerBuildTargetLayer string            `validate:"omitempty" example:"lambda"`
 	DockerBuildArgs        map[string]string `validate:"omitempty"`
-	BaseImageTags map[string]string `validate:"omitempty"`
-	ReleaseImage           string `validate:"omitempty"`
-	BuildOnly              bool     `validate:"omitempty"`
+	BaseImageTags          map[string]string `validate:"omitempty"`
+	ReleaseImage           string            `validate:"omitempty"`
+	BuildOnly              bool              `validate:"omitempty"`
 
 	// Passed to AwsEcsTaskDefinition.PreRegister
 	CustomVariables map[string]interface{}
@@ -1413,37 +1413,37 @@ type AwsEcsTaskDefinition struct {
 // AwsEcsServiceDeployDetails defines the details that can be used as env of placeholders that can be used in task
 // definition and replaced on deployment.
 type AwsEcsServiceDeployVariables struct {
-	ProjectName string
-	ServiceName string
-	ServiceBaseUrl string
-	PrimaryHostname string
-	AlternativeHostnames []string
-	ReleaseImage string
-	AwsRegion string
-	AwsLogGroupName string
-	AwsS3BucketNamePrivate string
-	AwsS3BucketNamePublic string
-	Env string
-	HTTPHost string
-	HTTPSHost string
-	HTTPSEnabled bool
-	StaticFilesS3Enabled bool
-	StaticFilesS3Prefix string
+	ProjectName                  string
+	ServiceName                  string
+	ServiceBaseUrl               string
+	PrimaryHostname              string
+	AlternativeHostnames         []string
+	ReleaseImage                 string
+	AwsRegion                    string
+	AwsLogGroupName              string
+	AwsS3BucketNamePrivate       string
+	AwsS3BucketNamePublic        string
+	Env                          string
+	HTTPHost                     string
+	HTTPSHost                    string
+	HTTPSEnabled                 bool
+	StaticFilesS3Enabled         bool
+	StaticFilesS3Prefix          string
 	StaticFilesCloudfrontEnabled bool
-	CacheHost string
-	DbHost string
-	DbUser string
-	DbPass string
-	DbName string
-	DbDriver string
-	DbDisableTLS bool
-	Route53Zones map[string][]string
-	AwsEc2Vpc *AwsEc2VpcResult
-	AwsEc2SecurityGroup *AwsEc2SecurityGroupResult
-	AwsSdService *AwsSdServiceResult
-	AwsElbLoadBalancer *AwsElbLoadBalancerResult
-	AwsEcsCluster *AwsEcsClusterResult
-	ProjectService *ProjectService
+	CacheHost                    string
+	DbHost                       string
+	DbUser                       string
+	DbPass                       string
+	DbName                       string
+	DbDriver                     string
+	DbDisableTLS                 bool
+	Route53Zones                 map[string][]string
+	AwsEc2Vpc                    *AwsEc2VpcResult
+	AwsEc2SecurityGroup          *AwsEc2SecurityGroupResult
+	AwsSdService                 *AwsSdServiceResult
+	AwsElbLoadBalancer           *AwsElbLoadBalancerResult
+	AwsEcsCluster                *AwsEcsClusterResult
+	ProjectService               *ProjectService
 }
 
 // EncodeRoute53Zones returns the base64 json encoded string of Route53Zones that can be used as an envirnment variable.
@@ -1472,7 +1472,6 @@ type AwsEcsTaskDefinitionResult struct {
 func (m *AwsEcsTaskDefinition) Input(vars AwsEcsServiceDeployVariables) (*ecs.RegisterTaskDefinitionInput, error) {
 
 	input := m.RegisterInput
-
 
 	if m.PreRegister != nil {
 		if err := m.PreRegister(input, vars); err != nil {

@@ -36,7 +36,7 @@ func BuildLambdaForTargetEnv(log *log.Logger, cfg *Config, targetFunc *ProjectFu
 		BuildDir:           targetFunc.DockerBuildDir,
 		Dockerfile:         targetFunc.Dockerfile,
 		DockerBuildContext: targetFunc.DockerBuildContext,
-		BaseImageTags: targetFunc.BaseImageTags,
+		BaseImageTags:      targetFunc.BaseImageTags,
 		TargetLayer:        targetFunc.DockerBuildTargetLayer,
 
 		AwsCredentials: cfg.AwsCredentials,

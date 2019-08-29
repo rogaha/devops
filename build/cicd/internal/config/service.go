@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
+	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
 	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
@@ -41,7 +41,7 @@ const (
 type Service = string
 
 var (
-	ServiceGoWebApi = "aws-ecs-go-web-api"
+	ServiceGoWebApi                   = "aws-ecs-go-web-api"
 	ServiceBuildWithBaseImage Service = "build-with-base-image"
 )
 
@@ -435,8 +435,8 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 				// When no Elastic Load Balance is used, tasks need to be able to directly update the Route 53 records.
 				if vars.AwsElbLoadBalancer == nil {
 					container1.Environment = append(container1.Environment,
-						ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_ZONES,  vars.EncodeRoute53Zones()),
-						ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_UPDATE_TASK_IPS, "true" ))
+						ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_ZONES, vars.EncodeRoute53Zones()),
+						ecsKeyValuePair(devdeploy.ENV_KEY_ROUTE53_UPDATE_TASK_IPS, "true"))
 				}
 
 				return nil

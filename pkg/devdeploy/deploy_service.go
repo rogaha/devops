@@ -156,36 +156,36 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			log.Println("\t\tFind and replace placeholders")
 
 			vars := AwsEcsServiceDeployVariables{
-				ProjectName: cfg.ProjectName,
-				ServiceName:  targetService.Name,
-				ServiceBaseUrl: "",
-				PrimaryHostname: targetService.ServiceHostPrimary,
-				AlternativeHostnames: targetService.ServiceHostNames,
-				ReleaseImage: targetService.ReleaseImage,
-				AwsRegion: cfg.AwsCredentials.Region,
-				AwsLogGroupName:  targetService.AwsCloudWatchLogGroup.LogGroupName,
-				AwsS3BucketNamePrivate :  cfg.AwsS3BucketPrivate.BucketName,
-				AwsS3BucketNamePublic: cfg.AwsS3BucketPublic.BucketName,
-				Env:  cfg.Env,
-				HTTPHost: "0.0.0.0:80",
-				HTTPSHost: "",
-				HTTPSEnabled: false,
-				StaticFilesS3Enabled: false,
+				ProjectName:                  cfg.ProjectName,
+				ServiceName:                  targetService.Name,
+				ServiceBaseUrl:               "",
+				PrimaryHostname:              targetService.ServiceHostPrimary,
+				AlternativeHostnames:         targetService.ServiceHostNames,
+				ReleaseImage:                 targetService.ReleaseImage,
+				AwsRegion:                    cfg.AwsCredentials.Region,
+				AwsLogGroupName:              targetService.AwsCloudWatchLogGroup.LogGroupName,
+				AwsS3BucketNamePrivate:       cfg.AwsS3BucketPrivate.BucketName,
+				AwsS3BucketNamePublic:        cfg.AwsS3BucketPublic.BucketName,
+				Env:                          cfg.Env,
+				HTTPHost:                     "0.0.0.0:80",
+				HTTPSHost:                    "",
+				HTTPSEnabled:                 false,
+				StaticFilesS3Enabled:         false,
 				StaticFilesS3Prefix:          targetService.StaticFilesS3Prefix,
 				StaticFilesCloudfrontEnabled: false,
-				CacheHost: "",
-				DbHost: "",
-				DbUser: "",
-				DbPass: "",
-				DbName: "",
-				DbDriver: "",
-				DbDisableTLS: false,
-				AwsEc2Vpc: vpc,
-				AwsEc2SecurityGroup: securityGroup,
-				AwsSdService: sdService,
-				AwsElbLoadBalancer: elb,
-				AwsEcsCluster: ecsCluster,
-				ProjectService: targetService,
+				CacheHost:                    "",
+				DbHost:                       "",
+				DbUser:                       "",
+				DbPass:                       "",
+				DbName:                       "",
+				DbDriver:                     "",
+				DbDisableTLS:                 false,
+				AwsEc2Vpc:                    vpc,
+				AwsEc2SecurityGroup:          securityGroup,
+				AwsSdService:                 sdService,
+				AwsElbLoadBalancer:           elb,
+				AwsEcsCluster:                ecsCluster,
+				ProjectService:               targetService,
 			}
 
 			// For HTTPS support.
@@ -268,7 +268,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			}
 
 			// Get the task input and execute any defined PreRegister method.
-			taskDefInput, err  = targetService.AwsEcsTaskDefinition.Input(vars)
+			taskDefInput, err = targetService.AwsEcsTaskDefinition.Input(vars)
 			if err != nil {
 				return err
 			}
