@@ -9,14 +9,17 @@ variables:
 
 stages:
   - setup:dev
+  - image:dev
   - build:dev
   - migrate:dev
   - deploy:dev
   - setup:stage
+  - image:stage
   - build:stage
   - migrate:stage
   - deploy:stage
   - setup:prod
+  - image:prod
   - build:prod
   - migrate:prod
   - deploy:prod
@@ -168,9 +171,9 @@ datadog-logcollector:deploy:prod:
 # the gitlab image repository.
 
 # The example base image.
-go-imagemagick7:setup:prod:
+go-imagemagick7:image:prod:
   <<: *build_tmpl
-  stage: setup:prod
+  stage: image:prod
   tags:
     - prod
   only:
