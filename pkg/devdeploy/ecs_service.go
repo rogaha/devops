@@ -41,12 +41,12 @@ func EcsServiceTaskInit(log *log.Logger, awsSession *session.Session) error {
 	if v := os.Getenv(ENV_KEY_ROUTE53_ZONES); v != "" {
 		dat, err := base64.RawURLEncoding.DecodeString(v)
 		if err != nil {
-			return errors.Wrapf(err, "failed to base64 URL decode zones")
+			return errors.Wrapf(err, "Failed to base64 URL decode zones")
 		}
 
 		err = json.Unmarshal(dat, &zoneArecNames)
 		if err != nil {
-			return errors.Wrapf(err, "failed to json decode zones - %s", string(dat))
+			return errors.Wrapf(err, "Failed to json decode zones - %s", string(dat))
 		}
 	}
 
@@ -55,7 +55,7 @@ func EcsServiceTaskInit(log *log.Logger, awsSession *session.Session) error {
 		var err error
 		registerServiceTasks, err = strconv.ParseBool(v)
 		if err != nil {
-			return errors.Wrapf(err, "failed to parse ROUTE53_UPDATE_TASK_IPS value '%s' to bool", v)
+			return errors.Wrapf(err, "Failed to parse ROUTE53_UPDATE_TASK_IPS value '%s' to bool", v)
 		}
 	}
 
@@ -90,7 +90,7 @@ func RegisterEcsServiceTasksRoute53(log *log.Logger, awsSession *session.Session
 			Services: []*string{aws.String(ecsServiceName)},
 		})
 		if err != nil {
-			return errors.Wrapf(err, "failed to describe service '%s'", ecsServiceName)
+			return errors.Wrapf(err, "Failed to describe service '%s'", ecsServiceName)
 		}
 		service := serviceRes.Services[0]
 
@@ -100,7 +100,7 @@ func RegisterEcsServiceTasksRoute53(log *log.Logger, awsSession *session.Session
 			DesiredStatus: aws.String("RUNNING"),
 		})
 		if err != nil {
-			return errors.Wrapf(err, "failed to list tasks for cluster '%s' service '%s'", ecsClusterName, ecsServiceName)
+			return errors.Wrapf(err, "Failed to list tasks for cluster '%s' service '%s'", ecsClusterName, ecsServiceName)
 		}
 
 		if len(servceTaskRes.TaskArns) == 0 {
@@ -112,7 +112,7 @@ func RegisterEcsServiceTasksRoute53(log *log.Logger, awsSession *session.Session
 			Tasks:   servceTaskRes.TaskArns,
 		})
 		if err != nil {
-			return errors.Wrapf(err, "failed to describe %d tasks for cluster '%s'", len(servceTaskRes.TaskArns), ecsClusterName)
+			return errors.Wrapf(err, "Failed to describe %d tasks for cluster '%s'", len(servceTaskRes.TaskArns), ecsClusterName)
 		}
 
 		for _, t := range taskRes.Tasks {
@@ -245,5 +245,27 @@ func RegisterEcsServiceTasksRoute53(log *log.Logger, awsSession *session.Session
 		log.Printf("DNS entries updated.\n")
 	}
 
+	return nil
+}
+
+// EcsServiceSetDesiredCount sets the desired count for an ECS service.
+func EcsServiceSetDesiredCount(log *log.Logger, awsSession *session.Session, desiredCount int) (err error) {
+	if awsSession == nil {
+		return nil
+	}
+
+	ecsClusterName := os.Getenv(ENV_KEY_ECS_CLUSTER)
+	ecsServiceName := os.Getenv(ENV_KEY_ECS_SERVICE)
+
+	svc := ecs.New(awsSession)
+
+	_, err = svc.UpdateService(&ecs.UpdateServiceInput{
+		Cluster:      aws.String(ecsClusterName),
+		Service:      aws.String(ecsServiceName),
+		DesiredCount: aws.Int64(int64(desiredCount)),
+	})
+	if err != nil {
+		return errors.Wrapf(err, "Failed set desired count to %d for %s.%s", desiredCount, ecsClusterName, ecsServiceName)
+	}
 	return nil
 }
