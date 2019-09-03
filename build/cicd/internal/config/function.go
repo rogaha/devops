@@ -24,7 +24,7 @@ var FunctionNames = []Function{
 }
 
 // NewFunction returns the *devdeploy.ProjectFunction.
-func NewFunction(funcName string, cfg *devdeploy.Config) (*devdeploy.ProjectFunction, error) {
+func NewFunction(log *log.Logger, funcName string, cfg *devdeploy.Config) (*devdeploy.ProjectFunction, error) {
 
 	ctx := &devdeploy.ProjectFunction{
 		Name:               fmt.Sprintf("%s-%s-%s", cfg.Env, cfg.ProjectName, funcName),
@@ -211,7 +211,7 @@ func BuildFunctionForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCred
 		return err
 	}
 
-	targetFunc, err := NewFunction(functionName, cfg)
+	targetFunc, err := NewFunction(log, functionName, cfg)
 	if err != nil {
 		return err
 	}
@@ -267,7 +267,7 @@ func DeployFunctionForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCre
 		return err
 	}
 
-	targetFunc, err := NewFunction(functionName, cfg)
+	targetFunc, err := NewFunction(log, functionName, cfg)
 	if err != nil {
 		return err
 	}

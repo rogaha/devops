@@ -107,15 +107,16 @@ type ProjectFunction struct {
 	// AwsIamRole defines the details for assigning the lambda function to use a custom role.
 	AwsIamRole *AwsIamRole `validate:"required"`
 
-	// AwsIamPolicy defines the details for created a custom policy for the lambda function.
-	AwsIamPolicy *AwsIamPolicy `validate:"required"`
-
 	// Optional flags.
 	DockerBuildContext     string            `validate:"omitempty" example:"."`
 	DockerBuildTargetLayer string            `validate:"omitempty" example:"lambda"`
 	DockerBuildArgs        map[string]string `validate:"omitempty"`
 	BaseImageTags          map[string]string `validate:"omitempty"`
 	EnableVPC              bool              `validate:"omitempty"`
+
+	// AwsIamPolicy defines the details for created a custom policy for the lambda function. The default service policy
+	// will be attached to the role if no IAM policy is defined.
+	AwsIamPolicy *AwsIamPolicy `validate:"omitempty"`
 
 	// Passed to AwsEcsTaskDefinition.PreRegister
 	CustomVariables map[string]interface{}

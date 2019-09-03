@@ -363,6 +363,8 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 				return nil, err
 			}
 			policyArns = append(policyArns, policy.Arn)
+		} else if defaultPolicy != nil {
+			policyArns = append(policyArns, defaultPolicy.Arn)
 		}
 
 		//  Find or create the AWS IAM role.
@@ -683,7 +685,7 @@ func openDbConn(log *log.Logger, dbInfo *DBConnInfo) (*sqlx.DB, error) {
 				return true, errors.Wrap(err, "Failed to connect to db.")
 			}
 
-			log.Println("openDbConn - %s", err)
+			log.Printf("openDbConn - %s\n", err)
 			return false, nil
 		}
 
@@ -694,7 +696,7 @@ func openDbConn(log *log.Logger, dbInfo *DBConnInfo) (*sqlx.DB, error) {
 				return true, errors.Wrap(err, "Failed to connect to db.")
 			}
 
-			log.Println("openDbConn - %s", err)
+			log.Printf("openDbConn - %s\n", err)
 			return false, nil
 		}
 

@@ -51,7 +51,7 @@ var ServiceNames = []Service{
 }
 
 // NewService returns the ProjectService for a service that is configured for the target deployment env.
-func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectService, error) {
+func NewService(log *log.Logger, serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectService, error) {
 
 	// =========================================================================
 	// New project service.
@@ -445,7 +445,7 @@ func NewService(serviceName string, cfg *devdeploy.Config) (*devdeploy.ProjectSe
 
 	case ServiceBuildWithBaseImage:
 
-		img, err := NewImage(ImageGoImagemagick7, cfg)
+		img, err := NewImage(log, ImageGoImagemagick7, cfg)
 		if err != nil {
 			return ctx, err
 		}
@@ -494,7 +494,7 @@ func BuildServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCrede
 		return err
 	}
 
-	targetSvc, err := NewService(serviceName, cfg)
+	targetSvc, err := NewService(log, serviceName, cfg)
 	if err != nil {
 		return err
 	}
@@ -550,7 +550,7 @@ func DeployServiceForTargetEnv(log *log.Logger, awsCredentials devdeploy.AwsCred
 		return err
 	}
 
-	targetSvc, err := NewService(serviceName, cfg)
+	targetSvc, err := NewService(log, serviceName, cfg)
 	if err != nil {
 		return err
 	}

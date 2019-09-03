@@ -1454,7 +1454,7 @@ func (infra *Infrastructure) GetDBConnInfo(name string) (*DBConnInfo, error) {
 	return dbInfo, nil
 }
 
-func (infra *Infrastructure) SaveDbConnInfo(name string, dBConnInfo *DBConnInfo) error {
+func (infra *Infrastructure) SaveDbConnInfo(log *log.Logger, name string, dBConnInfo *DBConnInfo) error {
 
 	// Secret ID used to store the DB username and password across deploys.
 	dbSecretId := infra.SecretID(filepath.Join("rds", name))
@@ -1572,7 +1572,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 				Pass: *input.MasterUserPassword,
 			}
 
-			err = infra.SaveDbConnInfo(dBClusterIdentifier, connInfo)
+			err = infra.SaveDbConnInfo(log, dBClusterIdentifier, connInfo)
 			if err != nil {
 				return nil, err
 			}
@@ -1628,7 +1628,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 	// Update the secret with the DB cluster details. This happens after DB create to help address when the
 	// DB cluster was successfully created, but the secret failed to save. The DB details host should be empty or
 	// match the current cluster endpoint.
-	curHost := *dbCluster.Endpoint
+	curHost := fmt.Sprintf("%s:%d", *dbCluster.Endpoint, *dbCluster.Port)
 	if curHost != connInfo.Host {
 
 		// Copy the cluster details to the DB struct.
@@ -1644,7 +1644,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 			connInfo.Driver = "mysql"
 		}
 
-		err = infra.SaveDbConnInfo(dBClusterIdentifier, connInfo)
+		err = infra.SaveDbConnInfo(log, dBClusterIdentifier, connInfo)
 		if err != nil {
 			return nil, err
 		}
@@ -1774,7 +1774,7 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 				Pass: *input.MasterUserPassword,
 			}
 
-			err = infra.SaveDbConnInfo(dBInstanceIdentifier, connInfo)
+			err = infra.SaveDbConnInfo(log, dBInstanceIdentifier, connInfo)
 			if err != nil {
 				return nil, err
 			}
@@ -1838,7 +1838,7 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 			connInfo.Driver = "mysql"
 		}
 
-		err = infra.SaveDbConnInfo(dBInstanceIdentifier, connInfo)
+		err = infra.SaveDbConnInfo(log, dBInstanceIdentifier, connInfo)
 		if err != nil {
 			return nil, err
 		}
