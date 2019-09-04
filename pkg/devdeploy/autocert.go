@@ -50,7 +50,7 @@ func (c *SecretManagerAutocertCache) Get(ctx context.Context, key string) ([]byt
 	// Load the secret by ID from Secrets Manager.
 	res, err := SecretManagerGetString(c.awsSession, secretID)
 	if err != nil {
-		if err == ErrSecreteNotFound {
+		if errors.Cause(err) == ErrSecreteNotFound {
 			return nil, autocert.ErrCacheMiss
 		}
 		return nil, err
