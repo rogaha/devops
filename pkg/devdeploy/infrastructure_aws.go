@@ -1643,9 +1643,14 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 
 		// Copy the cluster details to the DB struct.
 		connInfo.Host = curHost
-		connInfo.Database = *dbCluster.DatabaseName
 		connInfo.Driver = *dbCluster.Engine
 		connInfo.DisableTLS = false
+
+		if dbCluster.DatabaseName != nil {
+			connInfo.Database = *dbCluster.DatabaseName
+		} else {
+			connInfo.Database = *input.DatabaseName
+		}
 
 		switch connInfo.Driver {
 		case "aurora-postgresql":
