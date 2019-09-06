@@ -2598,12 +2598,18 @@ func (infra *Infrastructure) setupAwsSdPrivateDnsNamespace(log *log.Logger, targ
 		}
 	}
 
+	var curServices map[string]*AwsSdServiceResult
+	if result != nil  {
+		curServices = result.Services
+	}
+
 	result = &AwsSdPrivateDnsNamespaceResult{
 		Id:        *sdNamespace.Id,
 		Name:      *sdNamespace.Name,
 		Arn:       *sdNamespace.Arn,
 		Type:      *sdNamespace.Type,
 		InputHash: inputHash,
+		Services: curServices,
 	}
 	infra.AwsSdPrivateDnsNamespace[result.Name] = result
 
@@ -2615,7 +2621,7 @@ func (infra *Infrastructure) setupAwsSdPrivateDnsNamespace(log *log.Logger, targ
 // setupAwsSdService ensures the AWS Service Discovery service exists for a namespace else creates it.
 func (infra *Infrastructure) setupAwsSdService(log *log.Logger, sdNamespace *AwsSdPrivateDnsNamespaceResult, target *AwsSdService) (*AwsSdServiceResult, error) {
 
-	log.Println("\tService Discovery - Get or create service")
+	log.Printf("\tService Discovery - Get or create service %s\n", target.Name)
 
 	input, err := target.Input(sdNamespace)
 	if err != nil {
