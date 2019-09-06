@@ -1687,7 +1687,6 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 	result = &AwsRdsDBClusterResult{
 		DBClusterArn:        *dbCluster.DBClusterArn,
 		DBClusterIdentifier: *dbCluster.DBClusterIdentifier,
-		DatabaseName:        *dbCluster.DatabaseName,
 		Endpoint:            *dbCluster.Endpoint,
 		Port:                *dbCluster.Port,
 		Engine:              *dbCluster.Engine,
@@ -1697,6 +1696,12 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 		CreatedAt:           *dbCluster.ClusterCreateTime,
 		DBConnInfo:          connInfo,
 		InputHash:           inputHash,
+	}
+
+	if dbCluster.DatabaseName != nil {
+		result.DatabaseName = *dbCluster.DatabaseName
+	} else {
+		result.DatabaseName = connInfo.Database
 	}
 
 	infra.AwsRdsDBCluster[targetCluster.DBClusterIdentifier] = result
