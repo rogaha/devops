@@ -1591,6 +1591,16 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 		log.Printf("\t\tCreated: %s", *dbCluster.DBClusterArn)
 	} else {
 		log.Printf("\t\tFound: %s", *dbCluster.DBClusterArn)
+
+		// Store the secret first in the event that create fails.
+		if connInfo == nil {
+			// Only set the password right now,
+			// all other configuration details will be set after the database instance is created.
+			connInfo = &DBConnInfo{
+				User: *input.MasterUsername,
+				Pass: *input.MasterUserPassword,
+			}
+		}
 	}
 
 	// The status of the cluster.
