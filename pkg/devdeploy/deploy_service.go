@@ -118,14 +118,14 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 	if targetService.AwsSdPrivateDnsNamespace != nil {
 		sdNamespace, err := infra.GetAwsSdPrivateDnsNamespace(targetService.AwsSdPrivateDnsNamespace.Name)
 		if err != nil {
-			return nil
+			return err
 		}
 
 		// Ensure the service exists in the namespace.
 		if targetService.AwsSdPrivateDnsNamespace.Service != nil {
 			sdService, err = sdNamespace.GetService(targetService.AwsSdPrivateDnsNamespace.Service.Name)
 			if err != nil {
-				return nil
+				return err
 			}
 		}
 	}
