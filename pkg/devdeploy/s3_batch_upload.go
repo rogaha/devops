@@ -5,6 +5,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -77,6 +78,17 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 		acl = aws.String(di.acl)
 	}
 
+	var cacheControl *string
+	if di.metadata != nil {
+		for k, v := range di.metadata {
+			if strings.ToLower(k) == "cache-control" {
+				cacheControl = v
+				delete(di.metadata, k)
+				break
+			}
+		}
+	}
+
 	buffer, contentType, rerr := readFile(f)
 
 	nextPath, _ := filepath.Rel(di.dir, di.next.path)
@@ -89,6 +101,7 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 			ContentType: aws.String(contentType),
 			ACL:         acl,
 			Metadata:    di.metadata,
+			CacheControl: cacheControl,
 		},
 		After: func() error {
 			if rerr != nil {
