@@ -18,6 +18,7 @@ type DirectoryIterator struct {
 	bucket    string
 	keyPrefix string
 	acl       string
+	metadata  map[string]*string
 	next      struct {
 		path string
 		f    *os.File
@@ -26,7 +27,7 @@ type DirectoryIterator struct {
 }
 
 // NewDirectoryIterator builds a new DirectoryIterator
-func NewDirectoryIterator(bucket, keyPrefix, dir, acl string) (s3manager.BatchUploadIterator, error) {
+func NewDirectoryIterator(bucket, keyPrefix, dir, acl string, metadata map[string]*string) (s3manager.BatchUploadIterator, error) {
 
 	var paths []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -42,6 +43,7 @@ func NewDirectoryIterator(bucket, keyPrefix, dir, acl string) (s3manager.BatchUp
 		bucket:    bucket,
 		keyPrefix: keyPrefix,
 		acl:       acl,
+		metadata:  metadata,
 	}, err
 }
 
@@ -86,6 +88,7 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 			Body:        bytes.NewReader(buffer),
 			ContentType: aws.String(contentType),
 			ACL:         acl,
+			Metadata:    di.metadata,
 		},
 		After: func() error {
 			if rerr != nil {

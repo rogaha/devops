@@ -193,6 +193,17 @@ type Tag struct {
 	Value string
 }
 
+// Metadata describes a key/value pair that will help identify an S3 object.
+type Metadata struct {
+	// One part of a key-value pair that make up a tag. A key is a general label
+	// that acts like a category for more specific tag values.
+	Key string
+
+	// The optional part of a key-value pair that make up a tag. A value acts as
+	// a descriptor within a tag category (key).
+	Value string
+}
+
 // AwsCredentials defines AWS credentials used for deployment. Unable to use roles when deploying
 // using gitlab CI/CD pipeline.
 type AwsCredentials struct {

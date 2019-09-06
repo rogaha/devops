@@ -2599,7 +2599,7 @@ func (infra *Infrastructure) setupAwsSdPrivateDnsNamespace(log *log.Logger, targ
 	}
 
 	var curServices map[string]*AwsSdServiceResult
-	if result != nil  {
+	if result != nil {
 		curServices = result.Services
 	}
 
@@ -2609,7 +2609,7 @@ func (infra *Infrastructure) setupAwsSdPrivateDnsNamespace(log *log.Logger, targ
 		Arn:       *sdNamespace.Arn,
 		Type:      *sdNamespace.Type,
 		InputHash: inputHash,
-		Services: curServices,
+		Services:  curServices,
 	}
 	infra.AwsSdPrivateDnsNamespace[result.Name] = result
 

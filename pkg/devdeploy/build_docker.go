@@ -382,7 +382,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 				return errors.WithStack(err)
 			}
 
-			lambdaZip := filepath.Join(tmpDir, containerName + "-" + filepath.Base(req.LambdaS3Key))
+			lambdaZip := filepath.Join(tmpDir, containerName+"-"+filepath.Base(req.LambdaS3Key))
 			defer os.Remove(lambdaZip)
 
 			cmds = append(cmds, []string{"docker", "create", "-ti", "--name", containerName, req.ReleaseImage, "bash"})
@@ -390,7 +390,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 			cmds = append(cmds, []string{"docker", "rm", containerName})
 			cmds = append(cmds, []string{"cd", tmpDir + "/task"})
 			cmds = append(cmds, []string{"zip", "-r", lambdaZip, "."})
-			cmds = append(cmds, []string{"rm", "-rf",  tmpDir + "/task"})
+			cmds = append(cmds, []string{"rm", "-rf", tmpDir + "/task"})
 
 			s3Files[lambdaZip] = &s3manager.UploadInput{
 				Bucket: &req.LambdaS3Bucket,

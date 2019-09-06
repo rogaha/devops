@@ -90,10 +90,18 @@ func GetAwsCredentialsFromEnv(targetEnv string) (AwsCredentials, error) {
 }
 
 // SyncPublicS3Files copies the local files from the static directory to s3 with public-read enabled.
-func SyncPublicS3Files(awsSession *session.Session, staticS3Bucket, staticS3Prefix, staticDir string) error {
+func SyncPublicS3Files(awsSession *session.Session, staticS3Bucket, staticS3Prefix, staticDir string, metadatas ...Metadata) error {
 	uploader := s3manager.NewUploader(awsSession)
 
-	di, err := NewDirectoryIterator(staticS3Bucket, staticS3Prefix, staticDir, "public-read")
+	// Set the default cache-control, users can override this value with a Metadata arg.
+	metadata := map[string]*string{
+		"Cache-Control": aws.String("max-age=604800"),
+	}
+	for _, kv := range metadatas {
+		metadata[kv.Key] = aws.String(kv.Value)
+	}
+
+	di, err := NewDirectoryIterator(staticS3Bucket, staticS3Prefix, staticDir, "public-read", metadata)
 	if err != nil {
 		return err
 	}
