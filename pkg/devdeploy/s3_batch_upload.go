@@ -95,12 +95,12 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 
 	return s3manager.BatchUploadObject{
 		Object: &s3manager.UploadInput{
-			Bucket:      aws.String(di.bucket),
-			Key:         aws.String(filepath.Join(di.keyPrefix, nextPath)),
-			Body:        bytes.NewReader(buffer),
-			ContentType: aws.String(contentType),
-			ACL:         acl,
-			Metadata:    di.metadata,
+			Bucket:       aws.String(di.bucket),
+			Key:          aws.String(filepath.Join(di.keyPrefix, nextPath)),
+			Body:         bytes.NewReader(buffer),
+			ContentType:  aws.String(contentType),
+			ACL:          acl,
+			Metadata:     di.metadata,
 			CacheControl: cacheControl,
 		},
 		After: func() error {

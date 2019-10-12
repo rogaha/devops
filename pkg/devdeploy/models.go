@@ -1435,6 +1435,8 @@ type AwsEcsServiceDeployVariables struct {
 	AwsLogGroupName              string
 	AwsS3BucketNamePrivate       string
 	AwsS3BucketNamePublic        string
+	AwsExecutionRoleArn          string
+	AwsTaskRoleArn               string
 	Env                          string
 	HTTPHost                     string
 	HTTPSHost                    string

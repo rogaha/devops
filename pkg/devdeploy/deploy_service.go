@@ -145,6 +145,34 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		return err
 	}
 
+	// The execution role is the IAM role that executes ECS actions such as pulling the image and storing the
+	// application logs in cloudwatch.
+	var executionRoleArn string
+	if targetService.AwsEcsExecutionRole != nil {
+		role, err := infra.GetAwsIamRole(targetService.AwsEcsExecutionRole.RoleName)
+		if err != nil {
+			return err
+		}
+
+		// Update the task definition with the execution role ARN.
+		log.Printf("\tAppend ExecutionRoleArn to task definition input for role %s.", role.RoleName)
+		executionRoleArn = role.Arn
+	}
+
+	// The task role is the IAM role used by the task itself to access other AWS Services. To access services
+	// like S3, SQS, etc then those permissions would need to be covered by the TaskRole.
+	var taskRoleArn string
+	if targetService.AwsEcsTaskRole != nil {
+		role, err := infra.GetAwsIamRole(targetService.AwsEcsTaskRole.RoleName)
+		if err != nil {
+			return err
+		}
+
+		// Update the task definition with the task role ARN.
+		log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", role.RoleName)
+		taskRoleArn = role.Arn
+	}
+
 	// Step 8: Register a new ECS task definition.
 	var taskDef *AwsEcsTaskDefinitionResult
 	{
@@ -166,6 +194,8 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 				AwsLogGroupName:              targetService.AwsCloudWatchLogGroup.LogGroupName,
 				AwsS3BucketNamePrivate:       cfg.AwsS3BucketPrivate.BucketName,
 				AwsS3BucketNamePublic:        cfg.AwsS3BucketPublic.BucketName,
+				AwsExecutionRoleArn:          executionRoleArn,
+				AwsTaskRoleArn:               taskRoleArn,
 				Env:                          cfg.Env,
 				HTTPHost:                     "0.0.0.0:80",
 				HTTPSHost:                    "",
@@ -418,28 +448,18 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 		// The execution role is the IAM role that executes ECS actions such as pulling the image and storing the
 		// application logs in cloudwatch.
-		if (taskDefInput.ExecutionRoleArn == nil || *taskDefInput.ExecutionRoleArn == "") && targetService.AwsEcsExecutionRole != nil {
-			role, err := infra.GetAwsIamRole(targetService.AwsEcsExecutionRole.RoleName)
-			if err != nil {
-				return err
-			}
-
+		if (taskDefInput.ExecutionRoleArn == nil || *taskDefInput.ExecutionRoleArn == "") && executionRoleArn != "" {
 			// Update the task definition with the execution role ARN.
-			log.Printf("\tAppend ExecutionRoleArn to task definition input for role %s.", role.RoleName)
-			taskDefInput.ExecutionRoleArn = aws.String(role.Arn)
+			log.Printf("\tAppend ExecutionRoleArn to task definition input for role %s.", executionRoleArn)
+			taskDefInput.ExecutionRoleArn = aws.String(executionRoleArn)
 		}
 
 		// The task role is the IAM role used by the task itself to access other AWS Services. To access services
 		// like S3, SQS, etc then those permissions would need to be covered by the TaskRole.
-		if (taskDefInput.TaskRoleArn == nil || *taskDefInput.TaskRoleArn == "") && targetService.AwsEcsTaskRole != nil {
-			role, err := infra.GetAwsIamRole(targetService.AwsEcsTaskRole.RoleName)
-			if err != nil {
-				return err
-			}
-
+		if (taskDefInput.TaskRoleArn == nil || *taskDefInput.TaskRoleArn == "") && taskRoleArn != "" {
 			// Update the task definition with the task role ARN.
-			log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", role.RoleName)
-			taskDefInput.TaskRoleArn = aws.String(role.Arn)
+			log.Printf("\tAppend TaskRoleArn to task definition input for role %s.", taskRoleArn)
+			taskDefInput.TaskRoleArn = aws.String(taskRoleArn)
 		}
 
 		log.Println("\tRegister new task definition.")
