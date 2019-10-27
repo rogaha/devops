@@ -293,6 +293,9 @@ func main() {
 		fmt.Fprintf(w, "PONG")
 	})
 
+	// Only test the DB once on init, so the database can be auto-paused for AWS.
+	dbErr := testDbConn(masterDb)
+
 	// Main Handler
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
@@ -307,8 +310,8 @@ func main() {
 
 		fmt.Fprintf(w, "Welcome to the example web API!\n<br/>")
 
-		if err := testDbConn(masterDb); err != nil {
-			fmt.Fprintf(w, "Database connection: %s\n<br/>", err)
+		if dbErr != nil {
+			fmt.Fprintf(w, "Database connection: %s\n<br/>", dbErr)
 		} else {
 			fmt.Fprintf(w, "Database connection: ok\n<br/>")
 		}
