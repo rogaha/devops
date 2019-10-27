@@ -210,6 +210,9 @@ func main() {
 	}
 	defer masterDb.Close()
 
+	// Enable AWS to auto pause the DB when no activity.
+	masterDb.SetConnMaxLifetime(time.Hour)
+
 	// =========================================================================
 	// Start Redis if enabled
 	var redisClient *redis.Client
