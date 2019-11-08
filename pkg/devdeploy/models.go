@@ -88,6 +88,7 @@ type ProjectImage struct {
 	DockerBuildTargetLayer string            `validate:"omitempty" example:"lambda"`
 	DockerBuildArgs        map[string]string `validate:"omitempty"`
 	BaseImageTags          map[string]string `validate:"omitempty"`
+	UseECR                 bool              `validate:"omitempty"`
 }
 
 // ProjectFunction configures a function for build and deploy.

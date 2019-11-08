@@ -24,7 +24,19 @@ func BuildImageForTargetEnv(log *log.Logger, cfg *Config, targetImage *ProjectIm
 
 	var releaseDockerLoginCmd []string
 	var releaseImage string
-	if ciReg := os.Getenv("CI_REGISTRY"); ciReg != "" {
+	if targetImage.UseECR {
+		infra, err := NewInfrastructure(cfg)
+		if err != nil {
+			return err
+		}
+
+		repo, err := infra.GetAwsEcrRepository(cfg.AwsEcrRepository.RepositoryName)
+		if err != nil {
+			return err
+		}
+
+		releaseImage = repo.RepositoryUri + ":" + targetImage.ReleaseTag
+	} else if ciReg := os.Getenv("CI_REGISTRY"); ciReg != "" {
 		releaseDockerLoginCmd = []string{
 			"docker", "login",
 			"-u", os.Getenv("CI_REGISTRY_USER"),
