@@ -1,8 +1,12 @@
 package devdeploy
 
 import (
+	"encoding/base64"
+	"github.com/aws/aws-sdk-go/service/ecr"
+	"github.com/pkg/errors"
 	"log"
 	"os"
+	"strings"
 
 	"gopkg.in/go-playground/validator.v9"
 )
@@ -36,6 +40,35 @@ func BuildImageForTargetEnv(log *log.Logger, cfg *Config, targetImage *ProjectIm
 		}
 
 		releaseImage = repo.RepositoryUri + ":" + targetImage.ReleaseTag
+
+		log.Println("\tRetrieve ECR authorization token used for docker login.")
+
+		svc := ecr.New(infra.AwsSession())
+
+		// Get the credentials necessary for logging into the AWS Elastic Container Registry
+		// made available with the AWS access key and AWS secret access keys.
+		res, err := svc.GetAuthorizationToken(&ecr.GetAuthorizationTokenInput{})
+		if err != nil {
+			return errors.Wrap(err, "failed to get ecr authorization token")
+		}
+
+		authToken, err := base64.StdEncoding.DecodeString(*res.AuthorizationData[0].AuthorizationToken)
+		if err != nil {
+			return errors.Wrap(err, "failed to base64 decode ecr authorization token")
+		}
+		pts := strings.Split(string(authToken), ":")
+		user := pts[0]
+		pass := pts[1]
+
+		releaseDockerLoginCmd = []string{
+			"docker",
+			"login",
+			"-u", user,
+			"-p", pass,
+			*res.AuthorizationData[0].ProxyEndpoint,
+		}
+
+		log.Printf("\t%s\tdocker cmd login set.", Success)
 	} else if ciReg := os.Getenv("CI_REGISTRY"); ciReg != "" {
 		releaseDockerLoginCmd = []string{
 			"docker", "login",
