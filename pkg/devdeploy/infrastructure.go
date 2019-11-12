@@ -108,7 +108,7 @@ type Infrastructure struct {
 	AwsAppAutoscalingPolicy map[string]*AwsAppAutoscalingPolicyResult
 
 	// AwsRoute53MapZone allows the user to map a hostname to a specific zone id.
-	AwsRoute53MapZone func(hostname string) (string, error)
+	AwsRoute53MapZone func(hostname string) (string, error) `json:"-"`
 }
 
 // NewInfrastructure load the currently deploy infrastructure from AWS Secrets Manager.
