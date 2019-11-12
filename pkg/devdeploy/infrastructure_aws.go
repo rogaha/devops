@@ -1753,6 +1753,13 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 		return nil, err
 	}
 
+	if connInfo == nil && targetInstance.DBClusterIdentifier != nil && *targetInstance.DBClusterIdentifier != "" {
+		connInfo, err = infra.GetDBConnInfo(*targetInstance.DBClusterIdentifier)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Init a new RDS client.
 	svc := rds.New(infra.awsCredentials.Session())
 
