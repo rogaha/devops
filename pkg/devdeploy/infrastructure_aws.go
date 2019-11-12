@@ -2836,6 +2836,14 @@ func (infra *Infrastructure) setupAwsAcmCertificate(log *log.Logger, domainName 
 			CertificateTransparencyLoggingPreference: aws.String("DISABLED"),
 		},
 
+		// The method you want to use if you are requesting a public certificate to
+		// validate that you own or control domain. You can validate with DNS (https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-dns.html)
+		// or validate with email (https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-email.html).
+		// We recommend that you use DNS validation.
+		ValidationMethod: aws.String("DNS"),
+	}
+
+	if len(alternativeNames) > 0 {
 		// Additional FQDNs to be included in the Subject Alternative Name extension
 		// of the ACM certificate. For example, add the name www.example.net to a certificate
 		// for which the DomainName field is www.example.com if users can reach your
@@ -2843,14 +2851,9 @@ func (infra *Infrastructure) setupAwsAcmCertificate(log *log.Logger, domainName 
 		// add to an ACM certificate is 100. However, the initial limit is 10 domain
 		// names. If you need more than 10 names, you must request a limit increase.
 		// For more information, see Limits (https://docs.aws.amazon.com/acm/latest/userguide/acm-limits.html).
-		SubjectAlternativeNames: aws.StringSlice(alternativeNames),
-
-		// The method you want to use if you are requesting a public certificate to
-		// validate that you own or control domain. You can validate with DNS (https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-dns.html)
-		// or validate with email (https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-validate-email.html).
-		// We recommend that you use DNS validation.
-		ValidationMethod: aws.String("DNS"),
+		input.SubjectAlternativeNames = aws.StringSlice(alternativeNames)
 	}
+
 	inputHash := getInputHash(input)
 
 	if infra.AwsAcmCertificate == nil {

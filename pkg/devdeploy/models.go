@@ -168,8 +168,8 @@ type ProjectService struct {
 
 	// Optional flags.
 	EnableHTTPS            bool              `validate:"omitempty"`
-	ServiceHostPrimary     string            `validate:"omitempty,required_with=EnableHTTPS,fqdn"`
-	ServiceHostNames       []string          `validate:"omitempty,dive,fqdn"`
+	ServiceHostPrimary     string            `validate:"omitempty,required_with=EnableHTTPS"`
+	ServiceHostNames       []string          `validate:"omitempty"`
 	StaticFilesDir         string            `validate:"omitempty" example:"./cmd/web-api"`
 	StaticFilesS3Prefix    string            `validate:"omitempty"`
 	DockerBuildContext     string            `validate:"omitempty" example:"."`

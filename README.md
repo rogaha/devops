@@ -333,9 +333,9 @@ instance will be a dedicated host since we need it always up and running, thus i
     
 13. [Install Docker Machine](https://docs.docker.com/machine/install-machine/).
     ```bash
-    base=https://github.com/docker/machine/releases/download/v0.16.0 &&
-      curl -L $base/docker-machine-$(uname -s)-$(uname -m) >/tmp/docker-machine &&
-      sudo install /tmp/docker-machine /usr/sbin/docker-machine
+    curl -L https://github.com/docker/machine/releases/download/v0.16.2/docker-machine-`uname -s`-`uname -m` >/tmp/docker-machine &&
+        chmod +x /tmp/docker-machine &&
+        sudo cp /tmp/docker-machine /usr/sbin/docker-machine
     ```
     
 14. [Register the runner](https://docs.gitlab.com/runner/register/index.html).
@@ -437,7 +437,7 @@ instance will be a dedicated host since we need it always up and running, thus i
 sudo chkconfig docker on
 sudo service docker start
 sudo usermod -a -G docker $USER
-sudo docker run -d -p8081:8081 --restart always goproxy/goproxy -proxy https://goproxy.io
+sudo docker run -d -p8081:8081 -v /tmp:/go --restart always goproxy/goproxy  -proxy https://goproxy.io
 ``` 
 
 Get the public DNS name for the instance. This will be used by runners to access `goproxy` running on the bastion.
@@ -450,6 +450,9 @@ following line after `executor`:
 ```yaml
   environment = ["GOPROXY=xxxx"]
 ``` 
+_If you change any of the environment variables in the config and an instance has already been spun up to execute a 
+pending job, you will need to manually terminate the instance to force a new instance to be created before the change 
+to the environment will be included._
 
 Example after update:
 ```yaml
