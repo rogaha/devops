@@ -3409,7 +3409,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 
 		for _, zone := range zones {
 			log.Printf("\t\t\tUpdate zone '%s'\n", zone.Name)
-
+			
 			input := &route53.ChangeResourceRecordSetsInput{
 				ChangeBatch: &route53.ChangeBatch{
 					Changes: []*route53.Change{},
@@ -3421,17 +3421,30 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 			for _, aName := range zone.Entries {
 				log.Printf("\t\t\t\tAdd A record for '%s'.\n", aName)
 
+				rs := &route53.ResourceRecordSet{
+					Name: aws.String(aName),
+				}
+
+				if infra.awsCredentials.IsGov() {
+					rs.Type = aws.String("CNAME")
+					rs.ResourceRecords = []*route53.ResourceRecord{
+						&route53.ResourceRecord{
+							Value:	elb.DNSName,
+						},
+					}
+					rs.TTL = aws.Int64(120)
+				} else {
+					rs.Type = aws.String("A")
+					rs.AliasTarget = &route53.AliasTarget{
+						HostedZoneId:         elb.CanonicalHostedZoneId,
+						DNSName:              elb.DNSName,
+						EvaluateTargetHealth: aws.Bool(true),
+					}
+				}
+
 				input.ChangeBatch.Changes = append(input.ChangeBatch.Changes, &route53.Change{
 					Action: aws.String("UPSERT"),
-					ResourceRecordSet: &route53.ResourceRecordSet{
-						Name: aws.String(aName),
-						Type: aws.String("A"),
-						AliasTarget: &route53.AliasTarget{
-							HostedZoneId:         elb.CanonicalHostedZoneId,
-							DNSName:              elb.DNSName,
-							EvaluateTargetHealth: aws.Bool(true),
-						},
-					},
+					ResourceRecordSet: rs,
 				})
 			}
 
