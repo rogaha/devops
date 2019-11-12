@@ -460,7 +460,7 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 		}
 
 		// Find or create the AWS Service Discovery namespace and service if set.
-		if targetSrvc.AwsSdPrivateDnsNamespace != nil {
+		if targetSrvc.AwsSdPrivateDnsNamespace != nil && !cfg.AwsCredentials.IsGov() {
 			sdNamespace, err := infra.setupAwsSdPrivateDnsNamespace(log, targetSrvc.AwsSdPrivateDnsNamespace, vpc)
 			if err != nil {
 				return nil, err
@@ -487,7 +487,7 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 				}
 			}
 
-			zones, err = infra.setupAwsRoute53Zones(log, lookupDomains)
+			zones, err = infra.setupAwsRoute53Zones(log, lookupDomains, vpc)
 			if err != nil {
 				return nil, err
 			}

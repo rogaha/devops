@@ -49,6 +49,11 @@ func (creds AwsCredentials) Session() *session.Session {
 		})
 }
 
+// IsGov returns whether the region is a part of the govcloud.
+func (creds AwsCredentials) IsGov() bool {
+	return strings.Contains(creds.Region, "-gov-")
+}
+
 // GetAwsCredentials loads the AWS Access Keys from env variables unless a role is used.
 func GetAwsCredentialsFromEnv(targetEnv string) (AwsCredentials, error) {
 	var creds AwsCredentials

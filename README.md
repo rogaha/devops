@@ -350,10 +350,8 @@ instance will be a dedicated host since we need it always up and running, thus i
     ```    
     
     Notes: 
-    * When asked for gitlab-ci tags, enter `master,prod,prod-*`
-        * This will limit commits to the master or prod branches from triggering the pipeline to run. This includes a 
-        wildcard for any branch named with the prefix `prod-`.
-        * If you would like to setup a stage environment, then you could add the additional tags `stage,stage-*`
+    * When asked for gitlab-ci tags, enter `prod`
+        * If you would like to setup a stage environment, then you could add the additional tags `stage`
     * When asked the executor type, enter `docker+machine`
     * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.12-docker`
         

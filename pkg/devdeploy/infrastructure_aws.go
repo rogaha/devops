@@ -1748,12 +1748,16 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 
 	dBInstanceIdentifier := targetInstance.DBInstanceIdentifier
 
+	if targetInstance.DBClusterIdentifier != nil && *targetInstance.DBClusterIdentifier == dBInstanceIdentifier {
+		dBInstanceIdentifier += "db"
+	}
+
 	connInfo, err := infra.GetDBConnInfo(dBInstanceIdentifier)
 	if err != nil {
 		return nil, err
 	}
 
-	if connInfo == nil && targetInstance.DBClusterIdentifier != nil && *targetInstance.DBClusterIdentifier != "" {
+	if (connInfo == nil || connInfo.Host == "") && targetInstance.DBClusterIdentifier != nil && *targetInstance.DBClusterIdentifier != "" {
 		connInfo, err = infra.GetDBConnInfo(*targetInstance.DBClusterIdentifier)
 		if err != nil {
 			return nil, err
@@ -1779,35 +1783,46 @@ func (infra *Infrastructure) setupAwsRdsDbInstance(log *log.Logger, targetInstan
 	// No DB instance was found, so create a new one.
 	var created bool
 	if dbInstance == nil {
-		if connInfo != nil && connInfo.Pass != "" {
-			input.MasterUsername = aws.String(connInfo.User)
-			input.MasterUserPassword = aws.String(connInfo.Pass)
-		}
-
-		// The the password to a random value, it can be manually overwritten with the PreCreate method.
-		if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
-			input.MasterUserPassword = aws.String(uuid.NewRandom().String())
-		}
-
 		//if targetInstance.AwsRdsDBCluster != nil {
 		//	cfg.AwsRdsDBInstance.DBClusterIdentifier = aws.String(cfg.AwsRdsDBCluster.DBClusterIdentifier)
 		//}
 
+		if targetInstance.DBClusterIdentifier != nil && *targetInstance.DBClusterIdentifier != "" {
+			// These properties are set on the db cluster.
+			input.MasterUsername = nil
+			input.MasterUserPassword = nil
+			input.DBName = nil
+			input.BackupRetentionPeriod = nil
+			input.Port = nil
+			input.VpcSecurityGroupIds = nil
+			input.DBSubnetGroupName = nil
+			input.AllocatedStorage = nil
+		} else {
+			if connInfo != nil && connInfo.Pass != "" {
+				input.MasterUsername = aws.String(connInfo.User)
+				input.MasterUserPassword = aws.String(connInfo.Pass)
+			}
+
+			// The the password to a random value, it can be manually overwritten with the PreCreate method.
+			if input.MasterUserPassword == nil || *input.MasterUserPassword == "" {
+				input.MasterUserPassword = aws.String(uuid.NewRandom().String())
+			}
+		}
+
 		// Only store the db password for the instance when no cluster is defined.
 		// Store the secret first in the event that create fails.
-		if connInfo == nil {
+		if connInfo == nil || (input.MasterUserPassword != nil && connInfo.Pass != *input.MasterUserPassword) {
 			connInfo = &DBConnInfo{
 				User: *input.MasterUsername,
 				Pass: *input.MasterUserPassword,
 			}
-
-			err = infra.SaveDbConnInfo(log, dBInstanceIdentifier, connInfo)
-			if err != nil {
-				return nil, err
-			}
-
-			log.Printf("\t\tStored Secret\n")
 		}
+
+		err = infra.SaveDbConnInfo(log, dBInstanceIdentifier, connInfo)
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("\t\tStored Secret\n")
 
 		// If no instance was found, create one.
 		createRes, err := svc.CreateDBInstance(input)
@@ -2274,7 +2289,7 @@ func (infra *Infrastructure) GetRoute53ZoneByDomain(domainName string) (*AwsRout
 }
 
 // setupAwsRoute53Zones finds all the associated Route 53 zones.
-func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []string) (map[string]*AwsRoute53ZoneResult, error) {
+func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []string, vpc *AwsEc2VpcResult) (map[string]*AwsRoute53ZoneResult, error) {
 
 	if infra.AwsRoute53Zone == nil {
 		infra.AwsRoute53Zone = make(map[string]*AwsRoute53ZoneResult)
@@ -2401,7 +2416,7 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 			}
 
 			log.Printf("\t\t\t\tNo hosted zone found for '%s', create '%s'.", dn, zoneName)
-			createRes, err := svc.CreateHostedZone(&route53.CreateHostedZoneInput{
+			hzReq := &route53.CreateHostedZoneInput{
 				Name: aws.String(zoneName),
 				HostedZoneConfig: &route53.HostedZoneConfig{
 					Comment: aws.String(fmt.Sprintf("Public hosted zone created by saas-starter-kit.")),
@@ -2415,7 +2430,16 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 				//
 				// CallerReference is a required field
 				CallerReference: aws.String(fmt.Sprintf("devops-deploy-%s-%d", zoneName, time.Now().Unix())),
-			})
+			}
+			if infra.awsCredentials.IsGov() {
+				hzReq.HostedZoneConfig.PrivateZone = aws.Bool(true)
+				hzReq.VPC = &route53.VPC{
+					VPCId: &vpc.VpcId,
+					VPCRegion: &infra.awsCredentials.Region,
+				}
+			}
+
+			createRes, err := svc.CreateHostedZone(hzReq)
 			if err != nil {
 				return nil, errors.Wrapf(err, "Failed to create route 53 hosted zone '%s' for domain '%s'", zoneName, dn)
 			}
