@@ -106,6 +106,9 @@ type Infrastructure struct {
 
 	// AwsAppAutoscalingPolicy defines the Application Autoscaling policies.
 	AwsAppAutoscalingPolicy map[string]*AwsAppAutoscalingPolicyResult
+
+	// AwsRoute53MapZone allows the user to map a hostname to a specific zone id.
+	AwsRoute53MapZone func(hostname string) (string, error)
 }
 
 // NewInfrastructure load the currently deploy infrastructure from AWS Secrets Manager.
@@ -139,6 +142,7 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 	infra.awsCredentials = cfg.AwsCredentials
 	infra.Env = cfg.Env
 	infra.ProjectName = cfg.ProjectName
+	infra.AwsRoute53MapZone = cfg.AwsRoute53MapZone
 
 	return infra, nil
 }

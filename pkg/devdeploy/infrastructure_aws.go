@@ -2267,14 +2267,30 @@ func (infra *Infrastructure) GetRoute53ZoneById(zoneId string) (*AwsRoute53ZoneR
 func (infra *Infrastructure) GetRoute53ZoneByDomain(domainName string) (*AwsRoute53ZoneResult, error) {
 	var result *AwsRoute53ZoneResult
 
+	var userZoneId string
+	if infra.AwsRoute53MapZone != nil {
+		var err error
+		userZoneId, err = infra.AwsRoute53MapZone(domainName)
+		if err != nil {
+			return nil, errors.WithMessagef(err, "Failed to map domain '%s' to zone ID", domainName)
+		}
+	}
+
 	if infra.AwsRoute53Zone != nil {
 		for _, z := range infra.AwsRoute53Zone {
-			for _, dn := range z.AssocDomains {
-				if dn == domainName {
+			if userZoneId != "" {
+				if z.ZoneId == userZoneId {
 					result = z
-					break
+				}
+			} else {
+				for _, dn := range z.AssocDomains {
+					if  dn == domainName {
+						result = z
+						break
+					}
 				}
 			}
+
 			if result != nil {
 				break
 			}
