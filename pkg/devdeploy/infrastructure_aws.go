@@ -2327,17 +2327,27 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 
 		// Loop over each one of hosted zones and try to find match.
 		var zoneId string
-		for _, z := range infra.AwsRoute53Zone {
-			for _, ac := range z.AssocDomains {
-				if ac == dn {
-					zoneId = z.ZoneId
-					result[zoneId] = z
+		if infra.AwsRoute53MapZone != nil {
+			var err error
+			zoneId, err = infra.AwsRoute53MapZone(dn)
+			if err != nil {
+				return nil, errors.WithMessagef(err, "Failed to map domain '%s' to zone ID", dn)
+			}
+		}
+
+		if zoneId == "" {
+			for _, z := range infra.AwsRoute53Zone {
+				for _, ac := range z.AssocDomains {
+					if ac == dn {
+						zoneId = z.ZoneId
+						result[zoneId] = z
+						break
+					}
+				}
+
+				if zoneId != "" {
 					break
 				}
-			}
-
-			if zoneId != "" {
-				break
 			}
 		}
 
