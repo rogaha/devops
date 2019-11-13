@@ -2267,27 +2267,12 @@ func (infra *Infrastructure) GetRoute53ZoneById(zoneId string) (*AwsRoute53ZoneR
 func (infra *Infrastructure) GetRoute53ZoneByDomain(domainName string) (*AwsRoute53ZoneResult, error) {
 	var result *AwsRoute53ZoneResult
 
-	var userZoneId string
-	if infra.AwsRoute53MapZone != nil {
-		var err error
-		userZoneId, err = infra.AwsRoute53MapZone(domainName)
-		if err != nil {
-			return nil, errors.WithMessagef(err, "Failed to map domain '%s' to zone ID", domainName)
-		}
-	}
-
 	if infra.AwsRoute53Zone != nil {
 		for _, z := range infra.AwsRoute53Zone {
-			if userZoneId != "" {
-				if z.ZoneId == userZoneId {
+			for _, dn := range z.AssocDomains {
+				if dn == domainName {
 					result = z
-				}
-			} else {
-				for _, dn := range z.AssocDomains {
-					if  dn == domainName {
-						result = z
-						break
-					}
+					break
 				}
 			}
 
@@ -2327,27 +2312,17 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 
 		// Loop over each one of hosted zones and try to find match.
 		var zoneId string
-		if infra.AwsRoute53MapZone != nil {
-			var err error
-			zoneId, err = infra.AwsRoute53MapZone(dn)
-			if err != nil {
-				return nil, errors.WithMessagef(err, "Failed to map domain '%s' to zone ID", dn)
-			}
-		}
-
-		if zoneId == "" {
-			for _, z := range infra.AwsRoute53Zone {
-				for _, ac := range z.AssocDomains {
-					if ac == dn {
-						zoneId = z.ZoneId
-						result[zoneId] = z
-						break
-					}
-				}
-
-				if zoneId != "" {
+		for _, z := range infra.AwsRoute53Zone {
+			for _, ac := range z.AssocDomains {
+				if ac == dn {
+					zoneId = z.ZoneId
+					result[zoneId] = z
 					break
 				}
+			}
+
+			if zoneId != "" {
+				break
 			}
 		}
 
@@ -2460,7 +2435,7 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 			if infra.awsCredentials.IsGov() {
 				hzReq.HostedZoneConfig.PrivateZone = aws.Bool(true)
 				hzReq.VPC = &route53.VPC{
-					VPCId: &vpc.VpcId,
+					VPCId:     &vpc.VpcId,
 					VPCRegion: &infra.awsCredentials.Region,
 				}
 			}
@@ -2859,7 +2834,7 @@ func (infra *Infrastructure) setupAwsAcmCertificate(log *log.Logger, domainName 
 		// in a browser. For more information, see Opting Out of Certificate Transparency
 		// Logging (https://docs.aws.amazon.com/acm/latest/userguide/acm-bestpractices.html#best-practices-transparency).
 		Options: &acm.CertificateOptions{
-			CertificateTransparencyLoggingPreference: aws.String("DISABLED"),
+			CertificateTransparencyLoggingPreference: aws.String("ENABLED"),
 		},
 
 		// The method you want to use if you are requesting a public certificate to
@@ -3409,7 +3384,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 
 		for _, zone := range zones {
 			log.Printf("\t\t\tUpdate zone '%s'\n", zone.Name)
-			
+
 			input := &route53.ChangeResourceRecordSetsInput{
 				ChangeBatch: &route53.ChangeBatch{
 					Changes: []*route53.Change{},
@@ -3429,7 +3404,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 					rs.Type = aws.String("CNAME")
 					rs.ResourceRecords = []*route53.ResourceRecord{
 						&route53.ResourceRecord{
-							Value:	elb.DNSName,
+							Value: elb.DNSName,
 						},
 					}
 					rs.TTL = aws.Int64(120)
@@ -3443,7 +3418,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 				}
 
 				input.ChangeBatch.Changes = append(input.ChangeBatch.Changes, &route53.Change{
-					Action: aws.String("UPSERT"),
+					Action:            aws.String("UPSERT"),
 					ResourceRecordSet: rs,
 				})
 			}

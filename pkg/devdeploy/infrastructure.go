@@ -106,9 +106,6 @@ type Infrastructure struct {
 
 	// AwsAppAutoscalingPolicy defines the Application Autoscaling policies.
 	AwsAppAutoscalingPolicy map[string]*AwsAppAutoscalingPolicyResult
-
-	// AwsRoute53MapZone allows the user to map a hostname to a specific zone id.
-	AwsRoute53MapZone func(hostname string) (string, error) `json:"-"`
 }
 
 // NewInfrastructure load the currently deploy infrastructure from AWS Secrets Manager.
@@ -132,6 +129,13 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to json decode db credentials")
 		}
+
+		if cfg.AfterLoad != nil {
+			err = cfg.AfterLoad(infra)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+		}
 	}
 
 	if infra == nil {
@@ -142,7 +146,6 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 	infra.awsCredentials = cfg.AwsCredentials
 	infra.Env = cfg.Env
 	infra.ProjectName = cfg.ProjectName
-	infra.AwsRoute53MapZone = cfg.AwsRoute53MapZone
 
 	return infra, nil
 }

@@ -115,7 +115,7 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 
 	// Step 5: Find service discovery service.
 	var sdService *AwsSdServiceResult
-	if targetService.AwsSdPrivateDnsNamespace != nil && !cfg.AwsCredentials.IsGov()  {
+	if targetService.AwsSdPrivateDnsNamespace != nil && !cfg.AwsCredentials.IsGov() {
 		sdNamespace, err := infra.GetAwsSdPrivateDnsNamespace(targetService.AwsSdPrivateDnsNamespace.Name)
 		if err != nil {
 			return err
