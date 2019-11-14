@@ -3381,10 +3381,9 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 		}
 		baseHostname := u.Host
 
-
 		log.Println("\t\tRegister DNS entry in Route 53")
-
 		log.Printf("\t\t\tDNSName: '%s'\n", *elb.DNSName)
+		log.Printf("\t\t\tBase Hostname: '%s'\n", baseHostname)
 
 		svc := route53.New(infra.AwsSession())
 
