@@ -3375,15 +3375,9 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 
 	// If there are zones defined, then register the ELB.
 	if zones != nil {
-		u, err := url.Parse(targetService.ServiceHostPrimary)
-		if err != nil {
-			return nil, err
-		}
-		baseHostname := u.Host
-
 		log.Println("\t\tRegister DNS entry in Route 53")
 		log.Printf("\t\t\tDNSName: '%s'\n", *elb.DNSName)
-		log.Printf("\t\t\tBase Hostname: '%s'\n", baseHostname)
+		log.Printf("\t\t\\tPrimary Hostname: '%s'\n", targetService.ServiceHostPrimary)
 
 		svc := route53.New(infra.AwsSession())
 
@@ -3400,7 +3394,7 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 			// Add all the A record names with the same set of public IPs.
 			for _, aName := range zone.Entries {
 				var serviceHasName bool
-				if baseHostname == aName {
+				if targetService.ServiceHostPrimary == aName {
 					serviceHasName = true
 				} else {
 					for _, n := range targetService.ServiceHostNames {
