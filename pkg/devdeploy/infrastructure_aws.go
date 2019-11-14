@@ -3375,6 +3375,12 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 
 	// If there are zones defined, then register the ELB.
 	if zones != nil {
+		u, err := url.Parse(targetService.ServiceHostPrimary)
+		if err != nil {
+			return nil, err
+		}
+		baseHostname := u.Host
+
 
 		log.Println("\t\tRegister DNS entry in Route 53")
 
@@ -3394,7 +3400,24 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 
 			// Add all the A record names with the same set of public IPs.
 			for _, aName := range zone.Entries {
-				log.Printf("\t\t\t\tAdd A record for '%s'.\n", aName)
+				var serviceHasName bool
+				if baseHostname == aName {
+					serviceHasName = true
+				} else {
+					for _, n := range targetService.ServiceHostNames {
+						if n == aName {
+							serviceHasName = true
+							break
+						}
+					}
+				}
+
+				if !serviceHasName {
+					log.Printf("\t\t\t\tSkip record for '%s'.\n", aName)
+					continue
+				}
+
+				log.Printf("\t\t\t\tAdd record for '%s'.\n", aName)
 
 				rs := &route53.ResourceRecordSet{
 					Name: aws.String(aName),
@@ -3423,9 +3446,11 @@ func (infra *Infrastructure) setupAwsElbLoadBalancer(log *log.Logger, definedElb
 				})
 			}
 
-			_, err := svc.ChangeResourceRecordSets(input)
-			if err != nil {
-				return nil, errors.Wrapf(err, "Failed to update A records for zone '%s'", zone.ZoneId)
+			if len(input.ChangeBatch.Changes) > 0 {
+				_, err := svc.ChangeResourceRecordSets(input)
+				if err != nil {
+					return nil, errors.Wrapf(err, "Failed to update A records for zone '%s'", zone.ZoneId)
+				}
 			}
 		}
 	}
