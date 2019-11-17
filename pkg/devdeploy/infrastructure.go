@@ -129,16 +129,12 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to json decode db credentials")
 		}
-
-		if cfg.AfterLoad != nil {
-			err = cfg.AfterLoad(infra)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-		}
 	}
 
-	if infra == nil {
+	var loaded bool
+	if infra != nil {
+		loaded = true
+	} else {
 		infra = &Infrastructure{}
 	}
 
@@ -146,6 +142,13 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 	infra.awsCredentials = cfg.AwsCredentials
 	infra.Env = cfg.Env
 	infra.ProjectName = cfg.ProjectName
+
+	if loaded && cfg.AfterLoad != nil {
+		err = cfg.AfterLoad(infra)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+	}
 
 	return infra, nil
 }
