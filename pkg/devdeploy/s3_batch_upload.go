@@ -20,6 +20,7 @@ type DirectoryIterator struct {
 	keyPrefix string
 	acl       string
 	metadata  map[string]*string
+	cacheControl *string
 	next      struct {
 		path string
 		f    *os.File
@@ -38,6 +39,17 @@ func NewDirectoryIterator(bucket, keyPrefix, dir, acl string, metadata map[strin
 		return nil
 	})
 
+	var cacheControl *string
+	if metadata != nil {
+		for k, v := range metadata {
+			if strings.ToLower(k) == "cache-control" {
+				cacheControl = v
+				delete(metadata, k)
+				break
+			}
+		}
+	}
+
 	return &DirectoryIterator{
 		dir:       dir,
 		filePaths: paths,
@@ -45,6 +57,7 @@ func NewDirectoryIterator(bucket, keyPrefix, dir, acl string, metadata map[strin
 		keyPrefix: keyPrefix,
 		acl:       acl,
 		metadata:  metadata,
+		cacheControl: cacheControl,
 	}, err
 }
 
@@ -78,17 +91,6 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 		acl = aws.String(di.acl)
 	}
 
-	var cacheControl *string
-	if di.metadata != nil {
-		for k, v := range di.metadata {
-			if strings.ToLower(k) == "cache-control" {
-				cacheControl = v
-				delete(di.metadata, k)
-				break
-			}
-		}
-	}
-
 	buffer, contentType, rerr := readFile(f)
 
 	nextPath, _ := filepath.Rel(di.dir, di.next.path)
@@ -101,7 +103,7 @@ func (di *DirectoryIterator) UploadObject() s3manager.BatchUploadObject {
 			ContentType:  aws.String(contentType),
 			ACL:          acl,
 			Metadata:     di.metadata,
-			CacheControl: cacheControl,
+			CacheControl: di.cacheControl,
 		},
 		After: func() error {
 			if rerr != nil {
