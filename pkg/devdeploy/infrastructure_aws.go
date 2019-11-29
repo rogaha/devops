@@ -304,26 +304,34 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 					} else if aerr.Code() == iam.ErrCodeLimitExceededException {
 						err = nil
 
-						listRes, err := svc.ListPolicyVersions(&iam.ListPolicyVersionsInput{
+						listRes, lErr := svc.ListPolicyVersions(&iam.ListPolicyVersionsInput{
 							PolicyArn:      policy.Arn,
-							MaxItems: aws.Int64(1),
 						})
-						if err != nil {
-							return nil, errors.Wrapf(err, "Failed to list policy '%s' versions", policyName)
+						if lErr != nil {
+							return nil, errors.Wrapf(lErr, "Failed to list policy '%s' versions", policyName)
 						}
 
+						var (
+							firstVersionId string
+						 	firstVersionTime time.Time
+						)
 						for _, cv := range listRes.Versions {
-							if cv.IsDefaultVersion != nil && *cv.IsDefaultVersion {
+							if (cv.IsDefaultVersion != nil && *cv.IsDefaultVersion) || cv.CreateDate == nil {
 								continue
 							}
 
-							_, err = svc.DeletePolicyVersion(&iam.DeletePolicyVersionInput{
-								PolicyArn:   policy.Arn,
-								VersionId: cv.VersionId,
-							})
-							if err != nil {
-								return nil, errors.Wrapf(err, "Failed to delete policy '%s' version '%s'", policyName, cv.VersionId)
+							if firstVersionTime.IsZero() || cv.CreateDate.UTC().Unix() < firstVersionTime.UTC().Unix() {
+								firstVersionTime = cv.CreateDate.UTC()
+								firstVersionId = *cv.VersionId
 							}
+						}
+
+						_, err = svc.DeletePolicyVersion(&iam.DeletePolicyVersionInput{
+							PolicyArn:   policy.Arn,
+							VersionId: aws.String(firstVersionId),
+						})
+						if err != nil {
+							return nil, errors.Wrapf(err, "Failed to delete policy '%s' version '%s'", policyName, firstVersionId)
 						}
 
 						res, err = svc.CreatePolicyVersion(&iam.CreatePolicyVersionInput{
@@ -335,14 +343,17 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 				}
 
 				if err != nil {
-					return nil, errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
+					return nil, errors.Wrapf(err, "Failed to create policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
 				}
 			}
-			policy.DefaultVersionId = res.PolicyVersion.VersionId
+
+			if res != nil && res.PolicyVersion != nil {
+				policy.DefaultVersionId = res.PolicyVersion.VersionId
+			}
 		}
+	}
 
-	} else {
-
+	if policy == nil || policy.DefaultVersionId == nil ||  *policy.DefaultVersionId == "" {
 		// If no policy was found, create one.
 		res, err := svc.CreatePolicy(input)
 		if err != nil {
