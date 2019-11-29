@@ -271,7 +271,7 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 					}
 
 					if !hasAction {
-						log.Printf("\t\t\t\tAdded new action %s for '%s'", curStmt.Sid)
+						log.Printf("\t\t\t\tAdded new action %s for '%s'", baseAction, curStmt.Sid)
 						curStmt.Action = append(curStmt.Action, baseAction)
 						curDoc.Statement[curIdx] = curStmt
 						updateDoc = true
@@ -298,7 +298,43 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 				SetAsDefault:   aws.Bool(true),
 			})
 			if err != nil {
-				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != iam.ErrCodeNoSuchEntityException {
+				if aerr, ok := err.(awserr.Error); ok {
+					if aerr.Code() == iam.ErrCodeNoSuchEntityException {
+						err = nil
+					} else if aerr.Code() == iam.ErrCodeLimitExceededException {
+						err = nil
+
+						listRes, err := svc.ListPolicyVersions(&iam.ListPolicyVersionsInput{
+							PolicyArn:      policy.Arn,
+							MaxItems: aws.Int64(1),
+						})
+						if err != nil {
+							return nil, errors.Wrapf(err, "Failed to list policy '%s' versions", policyName)
+						}
+
+						for _, cv := range listRes.Versions {
+							if cv.IsDefaultVersion != nil && *cv.IsDefaultVersion {
+								continue
+							}
+
+							_, err = svc.DeletePolicyVersion(&iam.DeletePolicyVersionInput{
+								PolicyArn:   policy.Arn,
+								VersionId: cv.VersionId,
+							})
+							if err != nil {
+								return nil, errors.Wrapf(err, "Failed to delete policy '%s' version '%s'", policyName, cv.VersionId)
+							}
+						}
+
+						res, err = svc.CreatePolicyVersion(&iam.CreatePolicyVersionInput{
+							PolicyArn:      policy.Arn,
+							PolicyDocument: aws.String(string(dat)),
+							SetAsDefault:   aws.Bool(true),
+						})
+					}
+				}
+
+				if err != nil {
 					return nil, errors.Wrapf(err, "Failed to read policy '%s' version '%s'", policyName, *policy.DefaultVersionId)
 				}
 			}

@@ -84,6 +84,8 @@
         "iam:ListPolicies",
         "iam:GetPolicyVersion",
         "iam:CreatePolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:DeletePolicyVersion",
         "logs:DescribeLogGroups",
         "logs:CreateLogGroup",
         "logs:DescribeLogStreams",
