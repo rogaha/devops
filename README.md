@@ -363,6 +363,11 @@ instance will be a dedicated host since we need it always up and running, thus i
     
     Update the `[runners.docker]` configuration section in `config.toml` to match the example below replacing the 
     obvious placeholder `XXXXX` with the relevant value. 
+    
+    Few notes:
+    1. `privileged = true` allows for the build pipeline to take advantage of caching of multistage docker containers. 
+    2. No AWS access/secret keys should be necessary in this file as the attached AWS IAM role should handle dynamically 
+    providing credentials. 
     ```yaml
       environment = ["GOPROXY=https://goproxy.io"]
       [runners.docker]

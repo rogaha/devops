@@ -1,0 +1,49 @@
+concurrent = 3
+check_interval = 0
+
+[session_server]
+  session_timeout = 1800
+
+[[runners]]
+  name = "saas-starter-kit-dev"
+  url = "https://gitlab.com/"
+  token = "XXXXX"
+  executor = "docker+machine"
+  environment = ["GOPROXY=http://XXXXX.us-west-2.compute.amazonaws.com:8081"]
+  [runners.custom_build_dir]
+  [runners.docker]
+    tls_verify = false
+    image = "geeksaccelerator/docker-library:golang1.12-docker"
+    privileged = true
+    disable_entrypoint_overwrite = false
+    oom_kill_disable = false
+    disable_cache = false
+    volumes = ["/cache"]
+    shm_size = 0
+  [runners.cache]
+    Type = "s3"
+    Shared = true
+    [runners.cache.s3]
+      BucketName = "saas-starter-kit-private"
+      BucketLocation = "us-west-2"
+  [runners.machine]
+    IdleCount = 0
+    IdleTime = 1800
+    MachineDriver = "amazonec2"
+    MachineName = "gitlab-runner-machine-%s"
+    MachineOptions = [
+        "amazonec2-iam-instance-profile=SaasStarterKitEc2RoleForGitLabRunner",
+        "amazonec2-region=us-west-2",
+        "amazonec2-vpc-id=vpc-5f43f027",
+        "amazonec2-subnet-id=subnet-693d3110",
+        "amazonec2-zone=a",
+        "amazonec2-use-private-address=true",
+        "amazonec2-tags=runner-manager-name,gitlab-aws-autoscaler,gitlab,true,gitlab-runner-autoscale,true",
+        "amazonec2-security-group=gitlab-runner",
+        "amazonec2-instance-type=t2.large"]
+    OffPeakTimezone = ""
+    OffPeakIdleCount = 0
+    OffPeakIdleTime = 0
+
+
+

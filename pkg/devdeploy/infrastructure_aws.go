@@ -831,8 +831,22 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 
 					res, err := cf.CreateDistribution(input)
 					if err != nil {
-						if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != cloudfront.ErrCodeDistributionAlreadyExists) {
-							return nil, errors.Wrapf(err, "Failed to create cloudfront distribution '%s'", targetOriginId)
+						if aerr, ok := err.(awserr.Error); ok {
+							if aerr.Code() == cloudfront.ErrCodeDistributionAlreadyExists {
+								err = nil
+							} else if aerr.Code() == cloudfront.ErrCodeAccessDenied && strings.Contains(err.Error(), "must be verified") {
+								// AccessDeniedException: Your account must be verified before you can add new CloudFront resources.
+								// To verify your account, please contact AWS Support (https://console.aws.amazon.com/support/home#/) and include this error message.
+								// https://stackoverflow.com/questions/55084436/accessdeniedexception-while-creating-aws-web-cloudfront-distribution
+								//
+								// An alternative work around would be to disable Cloudfront for the current deployment,
+								// files would then be served directly from S3 instead.
+								return nil, errors.Wrapf(err, "You must verify your AWS account to create the Cloudfront distribution '%s' or disable Cloudfront for the current deployment.", targetOriginId)
+							} else {
+								return nil, errors.Wrapf(err, "Failed to create Cloudfront distribution '%s'", targetOriginId)
+							}
+						} else {
+							return nil, errors.Wrapf(err, "Failed to create Cloudfront distribution '%s'", targetOriginId)
 						}
 					}
 					curDist = res.Distribution
