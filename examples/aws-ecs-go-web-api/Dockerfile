@@ -10,8 +10,8 @@ RUN apk --no-cache add \
 WORKDIR /project/build
 
 # Enable go modules.
-ARG GOPROXY=https://goproxy.io
-ENV GOPROXY=$GOPROXY
+#ARG GOPROXY=https://goproxy.io
+#ENV GOPROXY=$GOPROXY
 ENV GO111MODULE="on"
 COPY go.mod .
 COPY go.sum .
