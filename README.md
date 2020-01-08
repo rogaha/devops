@@ -353,7 +353,7 @@ instance will be a dedicated host since we need it always up and running, thus i
     * When asked for gitlab-ci tags, enter `prod`
         * If you would like to setup a stage environment, then you could add the additional tags `stage`
     * When asked the executor type, enter `docker+machine`
-    * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.12-docker`
+    * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.13-docker`
         
 15. [Configuring the GitLab Runner](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/#configuring-the-gitlab-runner)   
 
@@ -372,7 +372,7 @@ instance will be a dedicated host since we need it always up and running, thus i
       environment = ["GOPROXY=https://goproxy.io"]
       [runners.docker]
         tls_verify = false
-        image = "geeksaccelerator/docker-library:golang1.12-docker"
+        image = "geeksaccelerator/docker-library:golang1.13-docker"
         privileged = true
         disable_entrypoint_overwrite = false
         oom_kill_disable = false

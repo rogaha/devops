@@ -1,5 +1,5 @@
 # LAYER: BASE
-FROM golang:1.12.9-alpine3.9 AS build_base_golang
+FROM golang:1.13.9-alpine3.9 AS build_base_golang
 
 LABEL maintainer="lee@geeksinthewoods.com"
 
@@ -9,6 +9,9 @@ RUN apk --no-cache add \
 # Change dir to project base.
 WORKDIR /project/build
 
+# Install fresh for auto-reloads for dev when running docker-compose.
+RUN go get github.com/pilu/fresh
+
 # Enable go modules.
 #ARG GOPROXY=https://goproxy.io
 #ENV GOPROXY=$GOPROXY
@@ -16,9 +19,6 @@ ENV GO111MODULE="on"
 COPY go.mod .
 COPY go.sum .
 RUN go mod download
-
-# Install fresh for auto-reloads for dev when running docker-compose.
-RUN go get github.com/pilu/fresh
 
 RUN echo $GOPATH
 

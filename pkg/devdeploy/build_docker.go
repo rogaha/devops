@@ -80,7 +80,7 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 	var stages []*builtStage
 
 	// When the dockerFile is multistage, caching can be applied. Scan the dockerFile for the first stage.
-	// FROM golang:1.12.6-alpine3.9 AS build_base
+	// FROM golang:1.13.6-alpine3.9 AS build_base
 	{
 		log.Printf("\tParsing build stages from %s\n", dockerPath)
 

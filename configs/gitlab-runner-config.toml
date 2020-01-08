@@ -13,7 +13,7 @@ check_interval = 0
   [runners.custom_build_dir]
   [runners.docker]
     tls_verify = false
-    image = "geeksaccelerator/docker-library:golang1.12-docker"
+    image = "geeksaccelerator/docker-library:golang1.13-docker"
     privileged = true
     disable_entrypoint_overwrite = false
     oom_kill_disable = false
