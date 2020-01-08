@@ -1,5 +1,5 @@
 # LAYER: BASE
-FROM golang:1.13.5-alpine3.9 AS build_base_golang
+FROM golang:1.13.5-alpine3.11 AS build_base_golang
 
 LABEL maintainer="lee@geeksinthewoods.com"
 
@@ -69,7 +69,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.build=${commit_ref}" -a 
 
 
 # FINAL LAYER - Entrypoint for the docker container image.
-FROM alpine:3.9
+FROM alpine:3.11
 
 RUN apk --update --no-cache add \
             tzdata ca-certificates curl openssl

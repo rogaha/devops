@@ -1,4 +1,4 @@
-FROM golang:1.13.5-alpine3.9 AS builder
+FROM golang:1.13.5-alpine3.11 AS builder
 
 LABEL maintainer="lee@geeksinthewoods.com"
 
