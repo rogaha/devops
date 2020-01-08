@@ -1,5 +1,5 @@
 # LAYER: BASE
-FROM golang:1.13.9-alpine3.9 AS build_base_golang
+FROM golang:1.13.5-alpine3.9 AS build_base_golang
 
 LABEL maintainer="lee@geeksinthewoods.com"
 
