@@ -1,17 +1,25 @@
 package devdeploy
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/pborman/uuid"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -106,6 +114,24 @@ type Infrastructure struct {
 
 	// AwsAppAutoscalingPolicy defines the Application Autoscaling policies.
 	AwsAppAutoscalingPolicy map[string]*AwsAppAutoscalingPolicyResult
+
+	// AwsS3Store is set when the secret is too big to store in secret manager.
+	AwsS3Store AwsS3Store
+
+	// awsS3PrivateBucketName is the name of the private S3 bucket.
+	awsS3PrivateBucketName string
+}
+
+// AwsS3Store defines the location of the infrastructure stored on S3 when it's too big to store in Secret Manager.
+type AwsS3Store struct {
+	// S3Bucket defined the S3 bucket the key is stored in.
+	S3Bucket string
+
+	// S3Key defined the S3 key for the secret.
+	S3Key string
+
+	// Passphrase is the 32 bit string used to encrypt the data.
+	Passphrase []byte
 }
 
 // NewInfrastructure load the currently deploy infrastructure from AWS Secrets Manager.
@@ -138,10 +164,37 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 		infra = &Infrastructure{}
 	}
 
+	if infra.AwsS3Store.S3Key != "" {
+		res, err := s3.New(cfg.AwsCredentials.Session()).GetObject(&s3.GetObjectInput{
+			Bucket: aws.String(infra.AwsS3Store.S3Bucket),
+			Key:    aws.String(infra.AwsS3Store.S3Key),
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to read infrastructure on Aws S3 at s3://%s/%s", infra.AwsS3Store.S3Bucket, infra.AwsS3Store.S3Key)
+		}
+
+		encDat, err := ioutil.ReadAll(res.Body)
+		defer res.Body.Close()
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to read infrastructure response on Aws S3 at s3://%s/%s", infra.AwsS3Store.S3Bucket, infra.AwsS3Store.S3Key)
+		}
+
+		dat, err = decrypt(encDat, infra.AwsS3Store.Passphrase)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to decrypt infrastructure")
+		}
+
+		err = json.Unmarshal(dat, &infra)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to json decode db credentials")
+		}
+	}
+
 	infra.secretID = secretID
 	infra.awsCredentials = cfg.AwsCredentials
 	infra.Env = cfg.Env
 	infra.ProjectName = cfg.ProjectName
+	infra.awsS3PrivateBucketName = cfg.AwsS3BucketPrivate.BucketName
 
 	if loaded && cfg.AfterLoad != nil {
 		err = cfg.AfterLoad(infra)
@@ -161,38 +214,81 @@ func (i *Infrastructure) Save(log *log.Logger) error {
 		return err
 	}
 
-	sm := secretsmanager.New(i.awsCredentials.Session())
+	// Store on S3 because the file is too big.
+	var saveToS3 bool
+	if i.AwsS3Store.S3Key != "" {
+		saveToS3 = true
+	} else {
+		sm := secretsmanager.New(i.awsCredentials.Session())
 
-	// Update the current AWS Secret.
-	_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
-		SecretId:     aws.String(i.secretID),
-		SecretBinary: dat,
-	})
-	if err != nil {
-		aerr, ok := err.(awserr.Error)
+		// Update the current AWS Secret.
+		_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
+			SecretId:     aws.String(i.secretID),
+			SecretBinary: dat,
+		})
+		if err != nil {
+			aerr, ok := err.(awserr.Error)
 
-		if ok && aerr.Code() == secretsmanager.ErrCodeResourceNotFoundException {
-			log.Printf("\tCreating new entry in AWS Secret Manager using secret ID %s\n", i.secretID)
+			if ok && aerr.Code() == secretsmanager.ErrCodeResourceNotFoundException {
+				log.Printf("\tCreating new entry in AWS Secret Manager using secret ID %s\n", i.secretID)
 
-			_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
-				Name:         aws.String(i.secretID),
-				SecretBinary: dat,
-			})
-			if err != nil {
-				return errors.Wrap(err, "Failed to create secret with infrastructure")
+				_, err = sm.CreateSecret(&secretsmanager.CreateSecretInput{
+					Name:         aws.String(i.secretID),
+					SecretBinary: dat,
+				})
+				if err != nil {
+					return errors.Wrap(err, "Failed to create secret with infrastructure")
+				}
+
+			} else if strings.Contains(err.Error(), "Member must have length less than") {
+				// Need to store file on S3. Value at 'secretBinary' failed to satisfy constraint: Member must have length less than or equal to 10240
+				saveToS3 = true
+			} else {
+				return errors.Wrap(err, "Failed to update secret with infrastructure")
 			}
-
-		} else {
-			// Temp for debugging
-			if strings.Contains(err.Error(), "Member must have length less than") {
-				log.Println("dat: ", string(dat))
-			}
-
-			return errors.Wrap(err, "Failed to update secret with infrastructure")
 		}
+
+		log.Printf("\tSaving Infrastructure to Aws Secret Manager using secret ID %s\n", i.secretID)
 	}
 
-	log.Printf("\tSaving Infrastructure to Aws Secret Manager using secret ID %s\n", i.secretID)
+	if saveToS3 {
+		if i.AwsS3Store.S3Bucket == "" {
+			i.AwsS3Store.S3Bucket = i.awsS3PrivateBucketName
+		}
+
+		// Ensure the S3 Bucket is setup.
+		_, err = i.GetAwsS3Bucket(i.AwsS3Store.S3Bucket)
+		if err != nil {
+			return errors.Wrap(err, "Failed to encrypt infrastructure")
+		}
+
+		if i.AwsS3Store.S3Key == "" {
+			i.AwsS3Store.S3Key = filepath.Join("devdeploy", "config", "infra.json.enc")
+		}
+
+		if len(i.AwsS3Store.Passphrase) == 0 {
+			i.AwsS3Store.Passphrase = []byte(uuid.NewRandom().String()[0:32])
+		}
+
+		log.Printf("\tSaving Infrastructure data to Aws S3 at s3://%s/%s\n", i.AwsS3Store.S3Bucket, i.AwsS3Store.S3Key)
+
+		encDat, err := encrypt(dat, i.AwsS3Store.Passphrase)
+		if err != nil {
+			return errors.Wrap(err, "Failed to encrypt infrastructure")
+		}
+
+		_, err = s3.New(i.awsCredentials.Session()).PutObject(&s3.PutObjectInput{
+			Bucket:               aws.String(i.AwsS3Store.S3Bucket),
+			Key:                  aws.String(i.AwsS3Store.S3Key),
+			ACL:                  aws.String("private"),
+			Body:                 bytes.NewReader(encDat),
+			ContentLength:        aws.Int64(int64(len(encDat))),
+			ServerSideEncryption: aws.String("AES256"),
+		})
+		if err != nil {
+			return errors.Wrapf(err, "Failed to save infrastructure to Aws S3 at s3://%s/%s", i.AwsS3Store.S3Bucket, i.AwsS3Store.S3Key)
+		}
+	}
 
 	return nil
 }
@@ -720,4 +816,45 @@ func openDbConn(log *log.Logger, dbInfo *DBConnInfo) (*sqlx.DB, error) {
 	err = retry.Retry(context.Background(), nil, retryFunc)
 
 	return dbConn, err
+}
+
+
+
+func encrypt(plaintext []byte, key []byte) ([]byte, error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(c)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
+}
+
+func decrypt(ciphertext []byte, key []byte) ([]byte, error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(c)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, errors.New("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }
