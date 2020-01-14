@@ -183,6 +183,11 @@ func (i *Infrastructure) Save(log *log.Logger) error {
 			}
 
 		} else {
+			// Temp for debugging
+			if strings.Contains(err.Error(), "Member must have length less than") {
+				log.Println("dat: ", string(dat))
+			}
+
 			return errors.Wrap(err, "Failed to update secret with infrastructure")
 		}
 	}
