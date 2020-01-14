@@ -71,6 +71,7 @@ func SecretManagerPutString(awsSession *session.Session, secretID, value string)
 // If the secret ID does not exist, it will create it.
 // If the secret ID was deleted, it will restore it and then update the value.
 func secretManagerPutValue(awsSession *session.Session, input *secretsmanager.CreateSecretInput) error {
+
 	svc := secretsmanager.New(awsSession)
 
 	// Create the new entry in AWS Secret Manager for the file.

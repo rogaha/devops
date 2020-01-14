@@ -42,11 +42,11 @@ func (creds AwsCredentials) Session() *session.Session {
 		return sess
 	}
 
-	return session.New(
+	return session.Must(session.NewSession(
 		&aws.Config{
 			Region:      aws.String(creds.Region),
 			Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
-		})
+		}))
 }
 
 // IsGov returns whether the region is a part of the govcloud.

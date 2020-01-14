@@ -141,7 +141,12 @@ func NewInfrastructure(cfg *Config) (*Infrastructure, error) {
 		return nil, errs
 	}
 
-	secretID := AwsSecretID(cfg.ProjectName, cfg.Env, "infrastructure/json")
+	var secretID string
+	if cfg.AwsSecretPrefix != "" {
+		secretID = AwsSecretID(cfg.AwsSecretPrefix, cfg.Env, "infrastructure/json")
+	} else {
+		secretID = AwsSecretID(cfg.ProjectName, cfg.Env, "infrastructure/json")
+	}
 
 	var infra *Infrastructure
 	dat, err := SecretManagerGetBinary(cfg.AwsCredentials.Session(), secretID)

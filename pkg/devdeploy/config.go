@@ -10,6 +10,9 @@ import (
 type Config struct {
 	Env string `validate:"oneof=dev stage prod"`
 
+	// AwsSecretPrefix will be used for prefixing AWS resources. If empty, default to Project Name.
+	AwsSecretPrefix string
+
 	// ProjectRoot should be the root directory for the project.
 	ProjectRoot string `validate:"required"`
 
