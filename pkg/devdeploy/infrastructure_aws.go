@@ -357,6 +357,8 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 		// If no policy was found, create one.
 		res, err := svc.CreatePolicy(input)
 		if err != nil {
+			log.Printf("\t\t\tPolicy Document: %s", string(*input.PolicyDocument))
+
 			return nil, errors.Wrapf(err, "Failed to create task policy '%s'", policyName)
 		}
 		policy = res.Policy
