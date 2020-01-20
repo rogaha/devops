@@ -641,10 +641,10 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 					return nil, errors.Wrapf(err, "Failed to get CORS rules for s3 bucket '%s'", bucketName)
 				}
 			} else {
-				curRules = s3Bucket.CORSRules
+				curRules = res.CORSRules
 			}
 
-			if diff := cmp.Diff(res.CORSRules, curRules); diff != "" {
+			if diff := cmp.Diff(curRules, s3Bucket.CORSRules); diff != "" {
 				log.Printf("\t\t\t\tCORS rules diff - %s\n", diff)
 
 				_, err := svc.PutBucketCors(&s3.PutBucketCorsInput{
