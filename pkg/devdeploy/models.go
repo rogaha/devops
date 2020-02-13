@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"github.com/aws/aws-sdk-go/service/cloudwatchevents"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -2952,6 +2954,118 @@ type AwsCloudwatchEventTargetResult struct {
 
 	// The ID of the target.
 	Id string
+
+	// The md5 hash of the input used to create the TargetGroup.
+	InputHash string
+}
+
+// AwsSQSQueue defines the details needed to create an SQS Queue that includes additional configuration.
+type AwsSQSQueue struct {
+	// Name is a required field
+	Name string
+
+	// QueueName is a required field
+	QueueName string
+
+	//    * DelaySeconds - The length of time, in seconds, for which the delivery
+	//    of all messages in the queue is delayed. Valid values: An integer from
+	//    0 to 900 (15 minutes). Default: 0.
+	DelaySeconds int
+
+	//    * MaximumMessageSize - The limit of how many bytes a message can contain
+	//    before Amazon SQS rejects it. Valid values: An integer from 1,024 bytes
+	//    (1 KiB) up to 262,144 bytes (256 KiB). Default: 262,144 (256 KiB).
+	MaximumMessageSize int
+
+	//    * MessageRetentionPeriod - The length of time, in seconds, for which Amazon
+	//    SQS retains a message. Valid values: An integer representing seconds,
+	//    from 60 (1 minute) to 1,209,600 (14 days). Default: 345,600 (4 days).
+	MessageRetentionPeriod int
+
+	//    * ReceiveMessageWaitTimeSeconds - The length of time, in seconds, for
+	//    which a ReceiveMessage action waits for a message to arrive. Valid values:
+	//    an integer from 0 to 20 (seconds). Default: 0.
+	ReceiveMessageWaitTimeSeconds int
+
+	//    * Policy - The queue's policy. A valid AWS policy. For more information
+	//    about policy structure, see Overview of AWS IAM Policies (https://docs.aws.amazon.com/IAM/latest/UserGuide/PoliciesOverview.html)
+	//    in the Amazon IAM User Guide.
+	Policy string
+
+	//    * RedrivePolicy - The string that includes the parameters for the dead-letter
+	//    queue functionality of the source queue. For more information about the
+	//    redrive policy and dead-letter queues, see Using Amazon SQS Dead-Letter
+	//    Queues (https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html)
+	//    in the Amazon Simple Queue Service Developer Guide. deadLetterTargetArn
+	//    - The Amazon Resource Name (ARN) of the dead-letter queue to which Amazon
+	//    SQS moves messages after the value of maxReceiveCount is exceeded. maxReceiveCount
+	//    - The number of times a message is delivered to the source queue before
+	//    being moved to the dead-letter queue. When the ReceiveCount for a message
+	//    exceeds the maxReceiveCount for a queue, Amazon SQS moves the message
+	//    to the dead-letter-queue. The dead-letter queue of a FIFO queue must also
+	//    be a FIFO queue. Similarly, the dead-letter queue of a standard queue
+	//    must also be a standard queue.
+	RedrivePolicy string
+
+	//    * VisibilityTimeout - The visibility timeout for the queue, in seconds.
+	//    Valid values: an integer from 0 to 43,200 (12 hours). Default: 30. For
+	//    more information about the visibility timeout, see Visibility Timeout
+	//    (https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-visibility-timeout.html)
+	//    in the Amazon Simple Queue Service Developer Guide.
+	VisibilityTimeout int
+
+	// Optional to provide additional details to the create input.
+	PreCreate func(input *sqs.CreateQueueInput) error `json:"-"`
+}
+
+// Input returns the AWS input for sqs.CreateQueue.
+func (m *AwsSQSQueue) Input() (*sqs.CreateQueueInput, error) {
+
+	input := &sqs.CreateQueueInput{
+		QueueName:  aws.String(m.QueueName),
+		Attributes: make(map[string]*string),
+	}
+	if m.DelaySeconds > 0 {
+		input.Attributes["DelaySeconds"] = aws.String(strconv.Itoa(m.DelaySeconds))
+	}
+	if m.MaximumMessageSize > 0 {
+		input.Attributes["MaximumMessageSize"] = aws.String(strconv.Itoa(m.MaximumMessageSize))
+	}
+	if m.MessageRetentionPeriod > 0 {
+		input.Attributes["MessageRetentionPeriod"] = aws.String(strconv.Itoa(m.MessageRetentionPeriod))
+	}
+	if m.ReceiveMessageWaitTimeSeconds > 0 {
+		input.Attributes["ReceiveMessageWaitTimeSeconds"] = aws.String(strconv.Itoa(m.ReceiveMessageWaitTimeSeconds))
+	}
+	if m.VisibilityTimeout > 0 {
+		input.Attributes["VisibilityTimeout"] = aws.String(strconv.Itoa(m.VisibilityTimeout))
+	}
+	if m.Policy != "" {
+		input.Attributes["Policy"] = aws.String(m.Policy)
+	}
+	if m.RedrivePolicy != "" {
+		input.Attributes["RedrivePolicy"] = aws.String(m.RedrivePolicy)
+	}
+
+	if m.PreCreate != nil {
+		if err := m.PreCreate(input); err != nil {
+			return input, err
+		}
+	}
+
+	return input, nil
+}
+
+// AwsSQSQueueResult defines information about a service derived from *sqs.CreateQueueOutput.
+type AwsSQSQueueResult struct {
+	// The Name.
+	Name string
+
+	// The Name of the queue.
+	QueueName string
+
+	// The URL of the created Amazon SQS queue.
+	QueueUrl string
 
 	// The md5 hash of the input used to create the TargetGroup.
 	InputHash string

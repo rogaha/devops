@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"log"
 	"net/url"
 	"path/filepath"
@@ -305,15 +306,15 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 						err = nil
 
 						listRes, lErr := svc.ListPolicyVersions(&iam.ListPolicyVersionsInput{
-							PolicyArn:      policy.Arn,
+							PolicyArn: policy.Arn,
 						})
 						if lErr != nil {
 							return nil, errors.Wrapf(lErr, "Failed to list policy '%s' versions", policyName)
 						}
 
 						var (
-							firstVersionId string
-						 	firstVersionTime time.Time
+							firstVersionId   string
+							firstVersionTime time.Time
 						)
 						for _, cv := range listRes.Versions {
 							if (cv.IsDefaultVersion != nil && *cv.IsDefaultVersion) || cv.CreateDate == nil {
@@ -327,7 +328,7 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 						}
 
 						_, err = svc.DeletePolicyVersion(&iam.DeletePolicyVersionInput{
-							PolicyArn:   policy.Arn,
+							PolicyArn: policy.Arn,
 							VersionId: aws.String(firstVersionId),
 						})
 						if err != nil {
@@ -353,7 +354,7 @@ func (infra *Infrastructure) setupAwsIamPolicy(log *log.Logger, targetPolicy *Aw
 		}
 	}
 
-	if policy == nil || policy.DefaultVersionId == nil ||  *policy.DefaultVersionId == "" {
+	if policy == nil || policy.DefaultVersionId == nil || *policy.DefaultVersionId == "" {
 		// If no policy was found, create one.
 		res, err := svc.CreatePolicy(input)
 		if err != nil {
@@ -3740,6 +3741,145 @@ func (infra *Infrastructure) GetAwsAppAutoscalingPolicy(policyName string) (*Aws
 	if !ok {
 		return nil, errors.Errorf("No policy configured for '%s'", policyName)
 	}
+	return result, nil
+}
+
+// GetAwsSQSQueue returns *AwsSQSQueueResult by queue name.
+func (infra *Infrastructure) GetAwsSQSQueue(queueName string) (*AwsSQSQueueResult, error) {
+	var (
+		result *AwsSQSQueueResult
+		ok     bool
+	)
+	if infra.AwsSQSQueueResult != nil {
+		result, ok = infra.AwsSQSQueueResult[queueName]
+	}
+
+	if !ok {
+		return nil, errors.Errorf("No queue configured for '%s'", queueName)
+	}
+	return result, nil
+}
+
+// setupAwsSQSQueue ensures the AWS SQS Queue exists else creates it.
+func (infra *Infrastructure) setupAwsSQSQueue(log *log.Logger, definedQueue *AwsSQSQueue) (*AwsSQSQueueResult, error) {
+
+	if definedQueue.QueueName == "" && definedQueue.Name != "" {
+		definedQueue.QueueName = definedQueue.Name
+	} else if definedQueue.Name == "" && definedQueue.QueueName != "" {
+		definedQueue.Name = definedQueue.QueueName
+	}
+
+	queueName := definedQueue.QueueName
+
+	log.Printf("\tSQS - Get or create queue '%s'\n", queueName)
+
+	input, err := definedQueue.Input()
+	if err != nil {
+		return nil, err
+	}
+
+	inputHash := getInputHash(input)
+
+	if infra.AwsSQSQueueResult == nil {
+		infra.AwsSQSQueueResult = make(map[string]*AwsSQSQueueResult)
+	}
+
+	result, ok := infra.AwsSQSQueueResult[queueName]
+	if ok && result != nil && result.InputHash == inputHash && !infra.skipCache {
+		log.Printf("\t\tExists: %s", result.Name)
+		return result, nil
+	}
+
+	svc := sqs.New(infra.AwsSession())
+
+	var queueUrl string
+	res, err := svc.ListQueues(&sqs.ListQueuesInput{
+		QueueNamePrefix: aws.String(queueName),
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to list queues for '%s'", queueName)
+	} else if res != nil && len(res.QueueUrls) > 0 {
+		for _, r := range res.QueueUrls {
+			if r != nil && strings.HasSuffix(*r, queueName) {
+				queueUrl = *r
+				log.Printf("\t\tFound queue %s", queueUrl)
+				break
+			}
+		}
+	}
+
+	if queueUrl != "" {
+		log.Printf("\t\tFound: %s.", queueUrl)
+
+		result = &AwsSQSQueueResult{
+			Name:      definedQueue.Name,
+			QueueName: queueName,
+			QueueUrl:  queueUrl,
+			InputHash: inputHash,
+		}
+
+		log.Printf("\t\tChecking Attributes")
+		res, err := svc.GetQueueAttributes(&sqs.GetQueueAttributesInput{
+			QueueUrl:       aws.String(queueUrl),
+			AttributeNames: []*string{aws.String("all")},
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to list queues for '%s'", queueName)
+		}
+
+		var attrsChanged bool
+		for k, kv := range res.Attributes {
+			var has string
+			if kv != nil {
+				has = fmt.Sprintf("%v", *kv)
+			}
+
+			var want string
+			if av, ok := input.Attributes[k]; ok {
+				if kv != nil {
+					want = fmt.Sprintf("%v", *av)
+				}
+			}
+
+			if has != want {
+				log.Printf("\t\t\tAttribute %s set to %s want %s, update", has, want)
+				attrsChanged = true
+			}
+		}
+
+		if attrsChanged {
+			log.Printf("\t\tUpdating Attributes")
+
+			_, err = svc.SetQueueAttributes(&sqs.SetQueueAttributesInput{
+				QueueUrl:   aws.String(queueUrl),
+				Attributes: input.Attributes,
+			})
+			if err != nil {
+				return nil, errors.Wrapf(err, "Failed to list set attributes for '%s'", queueName)
+			}
+		}
+
+	} else {
+		res, err := svc.CreateQueue(input)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to create qeuue '%s'", queueName)
+		}
+		queueUrl = *res.QueueUrl
+
+		result = &AwsSQSQueueResult{
+			Name:      definedQueue.Name,
+			QueueName: queueName,
+			QueueUrl:  queueUrl,
+			InputHash: inputHash,
+		}
+
+		log.Printf("\t\tCreated: %s.", queueUrl)
+	}
+
+	infra.AwsSQSQueueResult[queueName] = result
+
+	log.Printf("\t%s\tQueue %s available\n", queueName)
+
 	return result, nil
 }
 

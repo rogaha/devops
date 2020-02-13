@@ -125,7 +125,12 @@
         "servicediscovery:ListServices",
         "servicediscovery:CreateService",
         "servicediscovery:GetService",
-        "sts:AssumeRole"
+        "sts:AssumeRole",
+        "sqs:CreateQueue",
+        "sqs:SetQueueAttributes",
+        "sqs:GetQueueUrl",
+        "sqs:GetQueueAttributes",
+        "sqs:ListQueues"
       ],
       "Resource": "*"
     },

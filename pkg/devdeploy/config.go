@@ -62,6 +62,9 @@ type Config struct {
 	// This is optional and will get populated when RDS Cluster/Instance is created.
 	DBConnInfo *DBConnInfo
 
+	// AwsSQSQueues is a list of SQS queues configured for the project.
+	AwsSQSQueues []*AwsSQSQueue
+
 	// List of configured services.
 	ProjectServices []*ProjectService
 

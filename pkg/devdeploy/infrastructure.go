@@ -17,14 +17,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/pborman/uuid"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
+	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
 	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
 	"gopkg.in/go-playground/validator.v9"
@@ -113,6 +113,9 @@ type Infrastructure struct {
 
 	// AwsAppAutoscalingPolicy defines the Application Autoscaling policies.
 	AwsAppAutoscalingPolicy map[string]*AwsAppAutoscalingPolicyResult
+
+	// AwsSQSQueueResult defines the SQS Queues.
+	AwsSQSQueueResult map[string]*AwsSQSQueueResult
 
 	// AwsS3Store is set when the secret is too big to store in secret manager.
 	AwsS3Store AwsS3Store
@@ -307,8 +310,9 @@ func (i *Infrastructure) Save(log *log.Logger) error {
 // 6. AWS Elastic Cache Cluster
 // 7. AWS RDS database Cluster
 // 8. AWS RDS database Instance
-// 9. Function Resources
-// 10. Service Resources
+// 9. AWS SQS queues.
+// 10. Function Resources
+// 11. Service Resources
 func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*Infrastructure, error) {
 
 	log.Printf("Setup infrastructure for environment %s\n", cfg.Env)
@@ -461,7 +465,17 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 		infra.AwsRdsDBInstance = nil
 	}
 
-	// Step 9: Resources need to build and deploy functions.
+	// Step 9: Find or create the AWS SQS Queues
+	if len(cfg.AwsSQSQueues) > 0 {
+		for _, q := range cfg.AwsSQSQueues {
+			_, err = infra.setupAwsSQSQueue(log, q)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Step 10: Resources need to build and deploy functions.
 	for _, targetFunc := range cfg.ProjectFunctions {
 
 		// Validate the function.
@@ -518,7 +532,7 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 		return nil, errors.WithStack(err)
 	}
 
-	// Step 10: Resources need to build and deploy services.
+	// Step 11: Resources need to build and deploy services.
 	for _, targetSrvc := range cfg.ProjectServices {
 
 		// Workaround for domains that start with a numeric value like 8north.com
@@ -821,8 +835,6 @@ func openDbConn(log *log.Logger, dbInfo *DBConnInfo) (*sqlx.DB, error) {
 
 	return dbConn, err
 }
-
-
 
 func encrypt(plaintext []byte, key []byte) ([]byte, error) {
 	c, err := aes.NewCipher(key)

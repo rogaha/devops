@@ -14,14 +14,14 @@ import (
 
 // DirectoryIterator represents an iterator of a specified directory
 type DirectoryIterator struct {
-	dir       string
-	filePaths []string
-	bucket    string
-	keyPrefix string
-	acl       string
-	metadata  map[string]*string
+	dir          string
+	filePaths    []string
+	bucket       string
+	keyPrefix    string
+	acl          string
+	metadata     map[string]*string
 	cacheControl *string
-	next      struct {
+	next         struct {
 		path string
 		f    *os.File
 	}
@@ -51,12 +51,12 @@ func NewDirectoryIterator(bucket, keyPrefix, dir, acl string, metadata map[strin
 	}
 
 	return &DirectoryIterator{
-		dir:       dir,
-		filePaths: paths,
-		bucket:    bucket,
-		keyPrefix: keyPrefix,
-		acl:       acl,
-		metadata:  metadata,
+		dir:          dir,
+		filePaths:    paths,
+		bucket:       bucket,
+		keyPrefix:    keyPrefix,
+		acl:          acl,
+		metadata:     metadata,
 		cacheControl: cacheControl,
 	}, err
 }
