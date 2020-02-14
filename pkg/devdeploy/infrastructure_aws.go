@@ -3821,7 +3821,7 @@ func (infra *Infrastructure) setupAwsSQSQueue(log *log.Logger, definedQueue *Aws
 		log.Printf("\t\tChecking Attributes")
 		res, err := svc.GetQueueAttributes(&sqs.GetQueueAttributesInput{
 			QueueUrl:       aws.String(queueUrl),
-			AttributeNames: []*string{aws.String("all")},
+			AttributeNames: []*string{aws.String("All")},
 		})
 		if err != nil {
 			return nil, errors.Wrapf(err, "Failed to list queues for '%s'", queueName)
