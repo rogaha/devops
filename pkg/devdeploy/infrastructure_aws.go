@@ -39,6 +39,7 @@ import (
 )
 
 const AwsSecurityGroupSourceGroupSelf = "self"
+const SSEAlgorithm = "AES256"
 
 // AwsSecretID defines the key path for a secret by name.
 func AwsSecretID(projectName, env, secretName string) string {
@@ -727,6 +728,61 @@ func (infra *Infrastructure) setupAwsS3Buckets(log *log.Logger, s3Buckets ...*Aw
 				}
 				log.Println("\t\t\t\tBlocked public access")
 			}
+		}
+
+		if s3Bucket.SSE {
+			res, err := svc.GetBucketEncryption(&s3.GetBucketEncryptionInput{
+				Bucket: aws.String(bucketName),
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != "ServerSideEncryptionConfigurationNotFoundError") {
+					return nil, errors.Wrapf(err, "Failed to get bucket encryption for s3 bucket '%s'", bucketName)
+				}
+			}
+
+			var (
+				hasSSEAlgorithm bool
+				sseRules        []*s3.ServerSideEncryptionRule
+			)
+			if res != nil && res.ServerSideEncryptionConfiguration != nil && res.ServerSideEncryptionConfiguration.Rules != nil {
+				sseRules = res.ServerSideEncryptionConfiguration.Rules
+
+				for _, r := range res.ServerSideEncryptionConfiguration.Rules {
+					if r.ApplyServerSideEncryptionByDefault != nil && r.ApplyServerSideEncryptionByDefault.SSEAlgorithm != nil && *r.ApplyServerSideEncryptionByDefault.SSEAlgorithm == SSEAlgorithm {
+						hasSSEAlgorithm = true
+						break
+					}
+				}
+			}
+
+			if !hasSSEAlgorithm {
+				sseRules = append(sseRules, &s3.ServerSideEncryptionRule{
+					ApplyServerSideEncryptionByDefault: &s3.ServerSideEncryptionByDefault{
+						SSEAlgorithm: aws.String(SSEAlgorithm),
+					},
+				})
+
+				_, err := svc.PutBucketEncryption(&s3.PutBucketEncryptionInput{
+					Bucket: aws.String(bucketName),
+					ServerSideEncryptionConfiguration: &s3.ServerSideEncryptionConfiguration{
+						Rules: sseRules,
+					},
+				})
+				if err != nil {
+					return nil, errors.Wrapf(err, "Failed to put bucket encryption for s3 bucket '%s'", bucketName)
+				}
+			}
+			log.Println("\t\t\t\tSSE Enabled")
+		} else {
+			_, err := svc.DeleteBucketEncryption(&s3.DeleteBucketEncryptionInput{
+				Bucket: aws.String(bucketName),
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != "NoSuchPublicAccessBlockConfiguration") {
+					return nil, errors.Wrapf(err, "Failed to delete bucket encryption for s3 bucket '%s'", bucketName)
+				}
+			}
+			log.Println("\t\t\t\tSSE Disabled")
 		}
 
 		if s3Bucket.CloudFront != nil {

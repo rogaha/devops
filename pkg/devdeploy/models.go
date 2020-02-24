@@ -479,6 +479,9 @@ type AwsS3Bucket struct {
 	// The bucket policy as a JSON document.
 	Policy string
 
+	// SSE enables AES256 Server-side encryption to use for the default encryption.
+	SSE bool
+
 	// Optional to provide additional details to the create input.
 	PreCreate func(input *s3.CreateBucketInput) error `json:"-"`
 

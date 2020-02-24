@@ -110,6 +110,8 @@
         "s3:PutBucketCORS",
         "s3:PutBucketPolicy",
         "s3:PutBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "s3:PutEncryptionConfiguration",
         "route53:CreateHostedZone",
         "route53:ChangeResourceRecordSets",
         "route53:ListHostedZones",
