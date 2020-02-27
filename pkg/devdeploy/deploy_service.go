@@ -28,8 +28,8 @@ import (
 // 6. Find Load Balancer if enabled.
 // 7. Setup the AWS ECS Cluster for the service.
 // 8. Register AWS ECS task definition.
-// 9. Check for an existing AWS ECS service and if it needs to be created, recreated, or updated.
-// 10. Sync static files to AWS S3.
+// 9. Sync static files to AWS S3.
+// 10. Check for an existing AWS ECS service and if it needs to be created, recreated, or updated.
 // 11. Wait for AWS ECS service to enter a stable state.
 func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *ProjectService) error {
 
@@ -46,6 +46,42 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 	}
 
 	startTime := time.Now()
+
+	syncS3Chan := make(chan error, 1)
+
+	go func() {
+		// When static files are enabled to be to stored on S3, we need to upload all of them.
+		syncS3Chan <- func() error {
+			if targetService.StaticFilesDir != "" && targetService.StaticFilesS3Prefix != "" {
+				log.Println("\tUpload static files to public S3 bucket")
+
+				staticDir := targetService.StaticFilesDir
+
+				if _, err := os.Stat(staticDir); err != nil {
+					if !os.IsNotExist(err) {
+						return errors.Wrapf(err, "Static directory '%s' does not exist.", staticDir)
+
+					}
+				} else {
+					err := SyncPublicS3Files(infra.AwsSession(),
+						cfg.AwsS3BucketPublic.BucketName,
+						targetService.StaticFilesS3Prefix,
+						staticDir)
+					if err != nil {
+						return errors.Wrapf(err, "Failed to sync static files from %s to s3://%s/%s",
+							staticDir,
+							cfg.AwsS3BucketPublic.BucketName,
+							targetService.StaticFilesS3Prefix)
+					}
+
+					log.Printf("\t%s\tFiles uploaded to s3://%s/%s.\n", Success,
+						cfg.AwsS3BucketPublic.BucketName,
+						targetService.StaticFilesS3Prefix)
+				}
+			}
+			return nil
+		}()
+	}()
 
 	// Step 1: Find the vpc.
 	var vpc *AwsEc2VpcResult
@@ -486,7 +522,12 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 		}
 	}
 
-	// Step 9: Find the existing ECS service and check if it needs to be recreated
+	// Step 9: Wait for the goroutine to finish syncing files to s3
+	if err := <-syncS3Chan; err != nil {
+		return err
+	}
+
+	// Step 10: Find the existing ECS service and check if it needs to be recreated
 	ecsService, err := infra.setupAwsEcsService(log, ecsCluster, targetService.AwsEcsService, taskDef, vpc, securityGroup, sdService, elb)
 	if err != nil {
 		return err
@@ -571,34 +612,6 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			return errors.Wrapf(err, "Failed to put scaling policy '%s'", targetService.AwsAppAutoscalingPolicy.PolicyName)
 		}
 		log.Printf("\t\tPut scaling policy %s: %s", *policyInput.ResourceId, policyRes.String())
-	}
-
-	// Step 10: When static files are enabled to be to stored on S3, we need to upload all of them.
-	if targetService.StaticFilesDir != "" && targetService.StaticFilesS3Prefix != "" {
-		log.Println("\tUpload static files to public S3 bucket")
-
-		staticDir := targetService.StaticFilesDir
-
-		if _, err := os.Stat(staticDir); err != nil {
-			if !os.IsNotExist(err) {
-				return errors.Wrapf(err, "Static directory '%s' does not exist.", staticDir)
-			}
-		} else {
-			err := SyncPublicS3Files(infra.AwsSession(),
-				cfg.AwsS3BucketPublic.BucketName,
-				targetService.StaticFilesS3Prefix,
-				staticDir)
-			if err != nil {
-				return errors.Wrapf(err, "Failed to sync static files from %s to s3://%s/%s",
-					staticDir,
-					cfg.AwsS3BucketPublic.BucketName,
-					targetService.StaticFilesS3Prefix)
-			}
-
-			log.Printf("\t%s\tFiles uploaded to s3://%s/%s.\n", Success,
-				cfg.AwsS3BucketPublic.BucketName,
-				targetService.StaticFilesS3Prefix)
-		}
 	}
 
 	// Step 11: Wait for the updated or created service to enter a stable state.
