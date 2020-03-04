@@ -353,7 +353,7 @@ instance will be a dedicated host since we need it always up and running, thus i
     * When asked for gitlab-ci tags, enter `prod`
         * If you would like to setup a stage environment, then you could add the additional tags `stage`
     * When asked the executor type, enter `docker+machine`
-    * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.13-docker`
+    * When asked for the default Docker image, enter `geeksaccelerator/docker-library:golang1.12-docker`
         
 15. [Configuring the GitLab Runner](https://docs.gitlab.com/runner/configuration/runner_autoscale_aws/#configuring-the-gitlab-runner)   
 
@@ -372,7 +372,6 @@ instance will be a dedicated host since we need it always up and running, thus i
       environment = ["GOPROXY=https://goproxy.io"]
       [runners.docker]
         tls_verify = false
-        image = "geeksaccelerator/docker-library:golang1.13-docker"
         privileged = true
         disable_entrypoint_overwrite = false
         oom_kill_disable = false
@@ -435,8 +434,21 @@ instance will be a dedicated host since we need it always up and running, thus i
     The _ServerAddress_ for S3 will need to be updated if the region is changed. For `us-east-1` the
          _ServerAddress_ is `s3.amazonaws.com`.  Read more here about [accessing a bucket](https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html#access-bucket-intro)
 
+16. Build the gitlab base image that includes golang and the devops tool.
 
-16. Optionally enable a locally hosted proxy for Go modules to speed up build times using [goproxy.io](https://goproxy.io/). 
+```bash
+docker login registry.gitlab.com
+cd ./build/docker
+docker build -t golang1.13-docker -t registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker golang/1.13/docker
+docker push registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker
+```
+
+Update the image in `.gitlab-ci.yml` to match your project registry. 
+```yaml
+image: registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker
+```
+
+17. Optionally enable a locally hosted proxy for Go modules to speed up build times using [goproxy.io](https://goproxy.io/). 
 
 ```bash
 sudo chkconfig docker on

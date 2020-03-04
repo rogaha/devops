@@ -247,6 +247,25 @@ func (i *Infrastructure) Save(log *log.Logger) error {
 					return errors.Wrap(err, "Failed to create secret with infrastructure")
 				}
 
+			} else if ok && aerr.Code() == secretsmanager.ErrCodeInvalidRequestException {
+				// InvalidRequestException: You can't create this secret because a secret with this
+				// 							 name is already scheduled for deletion.
+
+				// Restore secret after it was already previously deleted.
+				_, err = sm.RestoreSecret(&secretsmanager.RestoreSecretInput{
+					SecretId: aws.String(i.secretID),
+				})
+				if err != nil {
+					return errors.Wrapf(err, "failed to restore secret %s", i.secretID)
+				}
+
+				_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
+					SecretId:     aws.String(i.secretID),
+					SecretBinary: dat,
+				})
+				if err != nil {
+					return errors.Wrap(err, "Failed to update secret with infrastructure")
+				}
 			} else if strings.Contains(err.Error(), "Member must have length less than") {
 				// Need to store file on S3. Value at 'secretBinary' failed to satisfy constraint: Member must have length less than or equal to 10240
 				saveToS3 = true

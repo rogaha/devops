@@ -3898,7 +3898,7 @@ func (infra *Infrastructure) setupAwsSQSQueue(log *log.Logger, definedQueue *Aws
 			}
 
 			if has != want {
-				log.Printf("\t\t\tAttribute %s set to %s want %s, update", has, want)
+				log.Printf("\t\t\tAttribute %s set to %s want %s, update", k, has, want)
 				attrsChanged = true
 			}
 		}
