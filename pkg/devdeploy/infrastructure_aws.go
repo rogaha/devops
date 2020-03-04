@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/jmoiron/sqlx"
 	"log"
 	"net/url"
 	"path/filepath"
@@ -1556,7 +1557,7 @@ func (infra *Infrastructure) GetDBConnInfo(name string) (*DBConnInfo, error) {
 		SecretId: aws.String(dbSecretId),
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException {
+		if aerr, ok := err.(awserr.Error); !ok || (aerr.Code() != secretsmanager.ErrCodeResourceNotFoundException && aerr.Code() != secretsmanager.ErrCodeInvalidRequestException) {
 			return nil, errors.Wrapf(err, "Failed to get value for secret id %s", dbSecretId)
 		}
 	} else {
@@ -1606,6 +1607,23 @@ func (infra *Infrastructure) SaveDbConnInfo(log *log.Logger, name string, dBConn
 				return errors.Wrap(err, "Failed to create new secret with db credentials")
 			}
 
+		} else if ok && aerr.Code() == secretsmanager.ErrCodeInvalidRequestException {
+
+			// Restore secret after it was already previously deleted.
+			_, err = sm.RestoreSecret(&secretsmanager.RestoreSecretInput{
+				SecretId: aws.String(dbSecretId),
+			})
+			if err != nil {
+				return errors.Wrapf(err, "Failed to restore secret %s", dbSecretId)
+			}
+
+			_, err = sm.UpdateSecret(&secretsmanager.UpdateSecretInput{
+				SecretId:     aws.String(dbSecretId),
+				SecretBinary: dat,
+			})
+			if err != nil {
+				return errors.Wrap(err, "Failed to update new secret with db credentials")
+			}
 		} else {
 			return errors.Wrap(err, "Failed to update new secret with db credentials")
 		}
@@ -1789,14 +1807,19 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 
 	// Execute the post AwsRdsDBCluster method if defined.
 	if created && targetCluster.AfterCreate != nil {
-		// Ensure the newly created database is seeded.
-		log.Printf("\t\tOpen database connection")
+		var db *sqlx.DB
+		if dbCluster.EngineMode != nil &&  *dbCluster.EngineMode == "provisioned" {
+			log.Printf("\t\tSkip database connection for engine mode %s\n", *dbCluster.EngineMode)
+		} else {
+			// Ensure the newly created database is seeded.
+			log.Printf("\t\tOpen database connection")
 
-		db, err := openDbConn(log, connInfo)
-		if err != nil {
-			return nil, err
+			db, err = openDbConn(log, connInfo)
+			if err != nil {
+				return nil, err
+			}
+			defer db.Close()
 		}
-		defer db.Close()
 
 		err = targetCluster.AfterCreate(dbCluster, connInfo, db)
 		if err != nil {
