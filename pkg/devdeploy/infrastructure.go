@@ -415,14 +415,6 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 	// Step 5: Find or create  AWS EC2 Security Group.
 	var securityGroup *AwsEc2SecurityGroupResult
 	{
-		// Enable services to be publicly available via HTTP port 80
-		cfg.AwsEc2SecurityGroup.IngressRules = append(cfg.AwsEc2SecurityGroup.IngressRules, &ec2.AuthorizeSecurityGroupIngressInput{
-			IpProtocol: aws.String("tcp"),
-			CidrIp:     aws.String("0.0.0.0/0"),
-			FromPort:   aws.Int64(80),
-			ToPort:     aws.Int64(80),
-		})
-
 		// Enable services to communicate between each other.
 		cfg.AwsEc2SecurityGroup.IngressRules = append(cfg.AwsEc2SecurityGroup.IngressRules, &ec2.AuthorizeSecurityGroupIngressInput{
 			SourceSecurityGroupName: aws.String(AwsSecurityGroupSourceGroupSelf),
@@ -643,18 +635,73 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 
 		// If an Elastic Load Balancer is enabled, then ensure one exists else create one.
 		if targetSrvc.AwsElbLoadBalancer != nil {
-			_, err = infra.setupAwsElbLoadBalancer(log, targetSrvc.AwsElbLoadBalancer, vpc, securityGroup, zones, targetSrvc)
+			elbSgReq := &AwsEc2SecurityGroup{
+				GroupName: "elb-"+securityGroup.GroupName,
+				Description: fmt.Sprintf("Handles load balancer requests for %s", securityGroup.GroupName),
+				IngressRules:  []*ec2.AuthorizeSecurityGroupIngressInput{
+					&ec2.AuthorizeSecurityGroupIngressInput{
+						IpProtocol: aws.String("tcp"),
+						CidrIp:     aws.String("0.0.0.0/0"),
+						FromPort:   aws.Int64(80),
+						ToPort:     aws.Int64(80),
+					},
+					&ec2.AuthorizeSecurityGroupIngressInput{
+						IpProtocol: aws.String("tcp"),
+						CidrIp:     aws.String("0.0.0.0/0"),
+						FromPort:   aws.Int64(443),
+						ToPort:     aws.Int64(443),
+					},
+				},
+			}
+
+			elbSg, err := infra.setupAwsEc2SecurityGroup(log, elbSgReq, vpc)
 			if err != nil {
 				return nil, err
 			}
+
+			_, err = infra.setupAwsElbLoadBalancer(log, targetSrvc.AwsElbLoadBalancer, vpc, elbSg, zones, targetSrvc)
+			if err != nil {
+				return nil, err
+			}
+
+			// Enable services to be accessible on port 80 by ELB.
+			log.Println("\tEC2 - Enable HTTP port 80 for security group from elb.")
+			svc := ec2.New(infra.AwsSession())
+			_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
+				SourceSecurityGroupName: &securityGroup.GroupName,
+				FromPort:   aws.Int64(80),
+				ToPort:     aws.Int64(80),
+				GroupId:    aws.String(elbSg.GroupId),
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
+					return nil, errors.Wrapf(err, "Failed to add ingress for security group '%s'",
+						elbSg.GroupName)
+				}
+			}
 		} else {
+
+			svc := ec2.New(infra.AwsSession())
+
+			log.Println("\tEC2 - Enable HTTP port 80 for security group.")
+			_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
+				IpProtocol: aws.String("tcp"),
+				CidrIp:     aws.String("0.0.0.0/0"),
+				FromPort:   aws.Int64(80),
+				ToPort:     aws.Int64(80),
+				GroupId:    aws.String(securityGroup.GroupId),
+			})
+			if err != nil {
+				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
+					return nil, errors.Wrapf(err, "Failed to add ingress for security group '%s'",
+						securityGroup.GroupName)
+				}
+			}
 
 			// When not using an Elastic Load Balancer, services need to support direct access via HTTPS.
 			// HTTPS is terminated via the web server and not on the Load Balancer.
 			if targetSrvc.EnableHTTPS {
 				log.Println("\tEC2 - Enable HTTPS port 443 for security group.")
-
-				svc := ec2.New(infra.AwsSession())
 
 				// Enable services to be publicly available via HTTPS port 443.
 				_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
