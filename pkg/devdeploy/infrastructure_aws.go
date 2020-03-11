@@ -1808,7 +1808,7 @@ func (infra *Infrastructure) setupAwsRdsDbCluster(log *log.Logger, targetCluster
 	// Execute the post AwsRdsDBCluster method if defined.
 	if created && targetCluster.AfterCreate != nil {
 		var db *sqlx.DB
-		if dbCluster.EngineMode != nil &&  *dbCluster.EngineMode == "provisioned" {
+		if dbCluster.EngineMode != nil && *dbCluster.EngineMode == "provisioned" {
 			log.Printf("\t\tSkip database connection for engine mode %s\n", *dbCluster.EngineMode)
 		} else {
 			// Ensure the newly created database is seeded.
@@ -2447,6 +2447,44 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 
 	log.Println("\tRoute 53 - Get or create hosted zones.")
 
+	svc := route53.New(infra.AwsSession())
+
+	log.Println("\t\tList all hosted zones.")
+	var zones []*route53.HostedZone
+	err := svc.ListHostedZonesPages(&route53.ListHostedZonesInput{},
+		func(res *route53.ListHostedZonesOutput, lastPage bool) bool {
+			for _, z := range res.HostedZones {
+				zones = append(zones, z)
+			}
+			return !lastPage
+		})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed list route 53 hosted zones")
+	}
+
+	// Verify all the zones are still valid.
+	var invalidZoneIDs []string
+	for zoneID, _ := range infra.AwsRoute53Zone {
+		var found bool
+		for _, z := range zones {
+			if *z.Id == zoneID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			invalidZoneIDs = append(invalidZoneIDs, zoneID)
+		}
+	}
+
+	// Remove any zones that no longer exist.
+	if len(invalidZoneIDs) > 0 {
+		log.Println("\t\tDetected %d removed zones.", len(invalidZoneIDs))
+		for _, zoneID := range invalidZoneIDs {
+			delete(infra.AwsRoute53Zone, zoneID)
+		}
+	}
+
 	// Route 53 zone lookup when hostname is set. Supports both top level domains or sub domains.
 	// Loop through all the defined domain names and find the associated zone even when they are a sub domain.
 	var missingDomains []string
@@ -2478,21 +2516,6 @@ func (infra *Infrastructure) setupAwsRoute53Zones(log *log.Logger, domains []str
 
 	if len(missingDomains) == 0 {
 		return result, nil
-	}
-
-	svc := route53.New(infra.AwsSession())
-
-	log.Println("\t\tList all hosted zones.")
-	var zones []*route53.HostedZone
-	err := svc.ListHostedZonesPages(&route53.ListHostedZonesInput{},
-		func(res *route53.ListHostedZonesOutput, lastPage bool) bool {
-			for _, z := range res.HostedZones {
-				zones = append(zones, z)
-			}
-			return !lastPage
-		})
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed list route 53 hosted zones")
 	}
 
 	for _, dn := range missingDomains {

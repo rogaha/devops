@@ -636,9 +636,9 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 		// If an Elastic Load Balancer is enabled, then ensure one exists else create one.
 		if targetSrvc.AwsElbLoadBalancer != nil {
 			elbSgReq := &AwsEc2SecurityGroup{
-				GroupName: "elb-"+securityGroup.GroupName,
+				GroupName:   "elb-" + securityGroup.GroupName,
 				Description: fmt.Sprintf("Handles load balancer requests for %s", securityGroup.GroupName),
-				IngressRules:  []*ec2.AuthorizeSecurityGroupIngressInput{
+				IngressRules: []*ec2.AuthorizeSecurityGroupIngressInput{
 					&ec2.AuthorizeSecurityGroupIngressInput{
 						IpProtocol: aws.String("tcp"),
 						CidrIp:     aws.String("0.0.0.0/0"),
@@ -669,9 +669,9 @@ func SetupInfrastructure(log *log.Logger, cfg *Config, opts ...SetupOption) (*In
 			svc := ec2.New(infra.AwsSession())
 			_, err = svc.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
 				SourceSecurityGroupName: &securityGroup.GroupName,
-				FromPort:   aws.Int64(80),
-				ToPort:     aws.Int64(80),
-				GroupId:    aws.String(elbSg.GroupId),
+				FromPort:                aws.Int64(80),
+				ToPort:                  aws.Int64(80),
+				GroupId:                 aws.String(elbSg.GroupId),
 			})
 			if err != nil {
 				if aerr, ok := err.(awserr.Error); !ok || aerr.Code() != "InvalidPermission.Duplicate" {
