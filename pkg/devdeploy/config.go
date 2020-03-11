@@ -72,7 +72,7 @@ type Config struct {
 	ProjectFunctions []*ProjectFunction
 
 	// AwsRoute53MapZone allows the user to map a hostname to a specific zone id.
-	AfterLoad func(infra *Infrastructure) error
+	AfterLoad func(infra *Infrastructure) error `json:"-"`
 }
 
 // SecretID returns the secret name with a standard prefix.

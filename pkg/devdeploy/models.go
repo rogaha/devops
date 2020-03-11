@@ -2664,7 +2664,7 @@ type AwsLambdaFunction struct {
 	PreUpdateConfiguration func(input *lambda.UpdateFunctionConfigurationInput, existing *lambda.FunctionConfiguration) error `json:"-"`
 
 	// Optional to update the Environment before create function or updateConfiguration is executed.
-	UpdateEnvironment func(vars map[string]string) error
+	UpdateEnvironment func(vars map[string]string) error `json:"-"`
 
 	// Optional to defined a Cloudwatch Event rule that will trigger this lambda.
 	AwsCloudwatchEventRule *AwsCloudwatchEventRule
