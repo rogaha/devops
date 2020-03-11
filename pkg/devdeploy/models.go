@@ -1425,7 +1425,7 @@ type AwsEcsTaskDefinition struct {
 	RegisterInput *ecs.RegisterTaskDefinitionInput `validate:"required"`
 
 	// Optional to provide additional details to the register input.
-	PreRegister func(input *ecs.RegisterTaskDefinitionInput, vars AwsEcsServiceDeployVariables) error
+	PreRegister func(input *ecs.RegisterTaskDefinitionInput, vars AwsEcsServiceDeployVariables) error `json:"-"`
 }
 
 // AwsEcsServiceDeployDetails defines the details that can be used as env of placeholders that can be used in task
