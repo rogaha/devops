@@ -2,6 +2,7 @@ package devdeploy
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"log"
 	"path/filepath"
 
@@ -56,8 +57,6 @@ func (c *SecretManagerAutocertCache) Get(ctx context.Context, key string) ([]byt
 		return nil, err
 	}
 
-	log.Printf("AWS Secrets Manager : Secret %s found", secretID)
-
 	return []byte(res), nil
 }
 
@@ -73,7 +72,7 @@ func (c *SecretManagerAutocertCache) Put(ctx context.Context, key string, data [
 		return err
 	}
 
-	log.Printf("AWS Secrets Manager : Secret %s updated", secretID)
+	log.Printf("Autocert : AWS Secrets Manager : Secret %s updated", secretID)
 
 	if c.cache != nil {
 		err = c.cache.Put(ctx, key, data)
@@ -121,10 +120,12 @@ func (c *SecretManagerAutocertCache) Delete(ctx context.Context, key string) err
 		RecoveryWindowInDays: aws.Int64(30),
 	})
 	if err != nil {
-		return errors.Wrapf(err, "autocert failed to delete secret %s", secretID)
+		if aerr, ok := err.(awserr.Error); !ok || !(aerr.Code() == secretsmanager.ErrCodeResourceNotFoundException || aerr.Code() == secretsmanager.ErrCodeInvalidRequestException) {
+			return errors.Wrapf(err, "autocert failed to delete secret %s", secretID)
+		}
 	}
 
-	log.Printf("AWS Secrets Manager : Secret %s deleted", secretID)
+	log.Printf("Autocert : AWS Secrets Manager : Secret %s deleted", secretID)
 
 	if c.cache != nil {
 		err = c.cache.Delete(ctx, key)
