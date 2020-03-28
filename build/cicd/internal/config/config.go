@@ -22,7 +22,7 @@ import (
 
 const (
 	// ProjectNamePrefix will be appending to the name of the project.
-	ProjectNamePrefix = "gitw-"
+	ProjectNamePrefix = "gitwops-"
 
 	// GitLabProjectBaseUrl is the base url used to create links to a specific CI/CD job or pipeline by ID.
 	GitLabProjectBaseUrl = "https://gitlab.com/geeks-accelerator/oss/devops"
