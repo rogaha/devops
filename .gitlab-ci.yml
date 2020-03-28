@@ -231,7 +231,7 @@ tag:release:prod:
     - git tag $(./cicd --env=prod semver inc-patch -version=$(git tag | sort -V | tail -n 1))
     - git push "https://${GITLAB_USER_NAME}:${CI_GIT_TOKEN}@${CI_REPOSITORY_URL#*@}" --tags
   tags:
-    - master
+    - prod
   only:
     - master
   dependencies:
