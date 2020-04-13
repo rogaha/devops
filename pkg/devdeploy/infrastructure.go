@@ -26,7 +26,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
+	"github.com/rogaha/devops/internal/retry"
 	"gopkg.in/go-playground/validator.v9"
 )
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/schema"
-	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
+	"github.com/rogaha/devops/build/cicd/internal/schema"
+	"github.com/rogaha/devops/pkg/devdeploy"
 )
 
 // RunSchemaMigrationsForTargetEnv executes schema migrations for the target environment.

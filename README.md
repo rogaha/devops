@@ -1,7 +1,7 @@
 # Devops 
-[![Build Status](https://gitlab.com/geeks-accelerator/oss/devops/badges/master/pipeline.svg)](https://gitlab.com/geeks-accelerator/oss/devops/pipelines) 
-[![GoDoc](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy?status.svg)](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy)
-[![Go Report Card](https://goreportcard.com/badge/gitlab.com/geeks-accelerator/oss/devops?style=flat-square)](https://goreportcard.com/report/gitlab.com/geeks-accelerator/oss/devops)
+[![Build Status](https://github.com/rogaha/devops/badges/master/pipeline.svg)](https://github.com/rogaha/devops/pipelines) 
+[![GoDoc](https://godoc.org/github.com/rogaha/devops/pkg/devdeploy?status.svg)](https://godoc.org/github.com/rogaha/devops/pkg/devdeploy)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rogaha/devops?style=flat-square)](https://goreportcard.com/report/github.com/rogaha/devops)
 
 
 __Devops__ is a set of tools for building a continuous deployment pipeline for [GitLab CI/CD](https://docs.gitlab.com/ee/ci/) 
@@ -50,33 +50,33 @@ at devops with this tool.
 
 This project has three main components:
 
-1. [pkg/devdeploy](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy) - A package which provides 
+1. [pkg/devdeploy](https://godoc.org/github.com/rogaha/devops/pkg/devdeploy) - A package which provides 
 configuration for AWS resources and handles executing that configuration for you. 
 
-2. [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) - An example implementation of the 
+2. [build/cicd](https://github.com/rogaha/devops/tree/master/build/cicd) - An example implementation of the 
 _devdeploy_ package that includes configuration for two example applications: 
 
-    * [Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) - An API service 
+    * [Go Web API](https://github.com/rogaha/devops/tree/master/examples/aws-ecs-go-web-api) - An API service 
     written in GO that is deployed to [AWS Fargate](https://aws.amazon.com/fargate/) with built in support for HTTPS.
     
         AWS Fargate is a compute engine for Amazon ECS that allows you to run containers without having to manage servers or 
         clusters. With AWS Fargate, you no longer have to provision, configure, and scale clusters of virtual machines to 
         run containers.  
 
-    * [Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector) - 
+    * [Python Datadog Log Collector](https://github.com/rogaha/devops/tree/master/examples/datadog-lambda-logcollector) - 
     An python script that is deployed to [AWS Lambda](https://aws.amazon.com/lambda/) to ship logs from AWS to Datadog. 
     
         AWS Lambda lets you run code without provisioning or managing servers. You pay only for the compute time you consume, 
         there is no charge when your code is not running. 
 
-    * [Build with Base Image](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/build-with-base-image) - 
+    * [Build with Base Image](https://github.com/rogaha/devops/tree/master/examples/build-with-base-image) - 
     A service that uses a separate step to build the base image. Sometimes we need to compile a bunch of libraries to 
     support a Go library like [gopkg.in/gographics/imagick.v3/imagick](https://github.com/gographics/imagick/tree/v3.2.0/imagick). 
-    The pipeline for this example service first builds [build/docker/go-imagemagick7](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/docker/go-imagemagick7/Dockerfile)
+    The pipeline for this example service first builds [build/docker/go-imagemagick7](https://github.com/rogaha/devops/tree/master/build/docker/go-imagemagick7/Dockerfile)
     which adds the stage `image` to the GitLab CI/CD pipeline. After this completes, the normal build stage is run. 
      
 
-3. [cmd/devops](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/cmd/devops) - A tool developed to help make it 
+3. [cmd/devops](https://github.com/rogaha/devops/tree/master/cmd/devops) - A tool developed to help make it 
 easy to get starting with this project. This tool will copy the example _build/cicd_ to a desired project directory 
 updating Go imports as necessary. 
 
@@ -90,7 +90,7 @@ the install instructions for Go](http://golang.org/doc/install.html).
 
 To install _devops_, simply run:
 ```
-$ go get -v gitlab.com/geeks-accelerator/oss/devops/cmd/devops
+$ go get -v github.com/rogaha/devops/cmd/devops
 ```
 
 Make sure your `PATH` includes the `$GOPATH/bin` directory so your commands can
@@ -102,7 +102,7 @@ export PATH=$PATH:$GOPATH/bin
 
 ## Getting Started
 
-Make a copy of [build/cicd](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd) to your specified 
+Make a copy of [build/cicd](https://github.com/rogaha/devops/tree/master/build/cicd) to your specified 
 project path. 
 ```bash
 $ devops inject-build cicd -project $GOPATH/src/gitlab.com/geeks-accelerator/oss/saas-starter-kit
@@ -146,12 +146,12 @@ details for AWS VPC, security group, RDS postgres database, Redis cache cluster,
  
 * `function.go` - Defines your functions that will be deployed to AWS Lambda. This includes settings for the runtime, 
 amount of memory, and timeout. The code has one function defined, 
-[Python Datadog Log Collector](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector). 
+[Python Datadog Log Collector](https://github.com/rogaha/devops/tree/master/examples/datadog-lambda-logcollector). 
 Additional functions can easily be defined here.  
 
 * `service.go` - Defines your services that will be deployed to AWS Fargate. This includes settings for your AWS ECS 
 Cluster, the specific service and task definitions. The code as one service defined, 
-[Go Web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api). Additional 
+[Go Web API](https://github.com/rogaha/devops/tree/master/examples/aws-ecs-go-web-api). Additional 
 services can easily be defined here.  
 
 * `schema.go` - Handles execution of schema migrations for target the deployment environment. Database credentials are 
@@ -191,7 +191,7 @@ migration runs.
 
 _cicd_ command is primary executed by a GitLab runner. After you have updated the configuration for your project, you 
 will need to configure GitLab CI/CD to execute the build and deployment. This project has an example 
-[.gitlab-ci.yml](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/.gitlab-ci.yml) that should be placed in 
+[.gitlab-ci.yml](https://github.com/rogaha/devops/blob/master/.gitlab-ci.yml) that should be placed in 
 your project root. 
 
 The project includes a Postgres database which adds an additional resource dependency when deploying the 
@@ -232,7 +232,7 @@ required to hosted the DNS on Route 53 so DNS entries can be managed by this dep
 [AWS IAM Policy](https://console.aws.amazon.com/iam/home?region=us-west-2#/policies$new?step=edit) called 
 `saas-starter-kit-deploy` with defined JSON statement instead of using the visual editor. The statement is rather large 
 as each permission is granted individually. A copy of the statement is stored in the repo at 
-[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
+[configs/aws-aim-deploy-policy.json](https://github.com/rogaha/devops/blob/master/configs/aws-aim-deploy-policy.json)
 
 
 2. Define an [AWS IAM Role](https://console.aws.amazon.com/iam/home?region=us-west-2#/roles$new?step=type) that will be
@@ -439,13 +439,13 @@ instance will be a dedicated host since we need it always up and running, thus i
 ```bash
 docker login registry.gitlab.com
 cd ./build/docker
-docker build -t golang1.13-docker -t registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker golang/1.13/docker
-docker push registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker
+docker build -t golang1.13-docker -t registry.github.com/rogaha/devops:golang1.13-docker golang/1.13/docker
+docker push registry.github.com/rogaha/devops:golang1.13-docker
 ```
 
 Update the image in `.gitlab-ci.yml` to match your project registry. 
 ```yaml
-image: registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker
+image: registry.github.com/rogaha/devops:golang1.13-docker
 ```
 
 17. Optionally enable a locally hosted proxy for Go modules to speed up build times using [goproxy.io](https://goproxy.io/). 
@@ -526,7 +526,7 @@ GLOBAL OPTIONS:
    --help, -h              show help
    --version, -v           print the version
 ```
-Refer to the _cicd_ [readme](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd#usage) for full 
+Refer to the _cicd_ [readme](https://github.com/rogaha/devops/tree/master/build/cicd#usage) for full 
 command details 
 
 
@@ -541,7 +541,7 @@ _cdcd_ to setup the configured AWS infrastructure and deploy services/functions.
 [Setup GitLab CI/CD](#setup-gitlab-cicd) then you will need to define a new IAM policy called `saas-starter-kit-deploy` 
 with a defined JSON statement instead of using the visual editor. The statement is rather large as each permission is 
 granted individually. A copy of the statement is stored in the repo at 
-[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
+[configs/aws-aim-deploy-policy.json](https://github.com/rogaha/devops/blob/master/configs/aws-aim-deploy-policy.json)
 
 3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
 called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 

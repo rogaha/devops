@@ -16,8 +16,8 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/build/cicd/internal/schema"
-	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
+	"github.com/rogaha/devops/build/cicd/internal/schema"
+	"github.com/rogaha/devops/pkg/devdeploy"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	ProjectNamePrefix = "gitwops-"
 
 	// GitLabProjectBaseUrl is the base url used to create links to a specific CI/CD job or pipeline by ID.
-	GitLabProjectBaseUrl = "https://gitlab.com/geeks-accelerator/oss/devops"
+	GitLabProjectBaseUrl = "https://github.com/rogaha/devops"
 
 	// EnableRdsServerless will use the Aurora database engine that scales the capacity based on database load. This is
 	// a good option for intermittent or unpredictable workloads.

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
+	"github.com/rogaha/devops/pkg/devdeploy"
 )
 
 // Image define the name of an image.

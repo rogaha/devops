@@ -36,7 +36,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/pborman/uuid"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/internal/retry"
+	"github.com/rogaha/devops/internal/retry"
 )
 
 const AwsSecurityGroupSourceGroupSelf = "self"

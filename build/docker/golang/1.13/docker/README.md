@@ -17,8 +17,8 @@ docker build -t registry.gitlab.com/alyssa-london/websites .
 
 ```bash
 docker login registry.gitlab.com
-docker build -t golang1.13-docker -t registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker .
-docker push registry.gitlab.com/geeks-accelerator/oss/devops:golang1.13-docker
+docker build -t golang1.13-docker -t registry.github.com/rogaha/devops:golang1.13-docker .
+docker push registry.github.com/rogaha/devops:golang1.13-docker
 ```
 
 ## Join us on Gopher Slack

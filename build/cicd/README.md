@@ -4,7 +4,7 @@ cicd
 
 _cicd_ is a simple command line tool that facilitates build and deployment for your project. The goal is to help enable 
 developers to easily setup a continuous build pipeline using [GitLab CI/CD](https://docs.gitlab.com/ee/ci/) and code 
-driven deployment.  You can view the current pipeline [here](https://gitlab.com/geeks-accelerator/oss/devops/pipelines).
+driven deployment.  You can view the current pipeline [here](https://github.com/rogaha/devops/pipelines).
 
 <!-- toc -->
 
@@ -47,17 +47,17 @@ Support is provided for both services and functions. The build process for both 
 required to be written in go. 
 
 Configuration for build and deploy is provided by 
-[gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy](https://godoc.org/gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy)
+[github.com/rogaha/devops/pkg/devdeploy](https://godoc.org/github.com/rogaha/devops/pkg/devdeploy)
 
 For additional details regarding this tool, refer to 
-[gitlab.com/geeks-accelerator/oss/devops](https://gitlab.com/geeks-accelerator/oss/devops)
+[github.com/rogaha/devops](https://github.com/rogaha/devops)
 
 
 
 ### Deployment Environments 
 
 All configuration for the deployment environments is defined in code that is located in the 
-[internal/config](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd/internal/config) package. 
+[internal/config](https://github.com/rogaha/devops/tree/master/build/cicd/internal/config) package. 
 Multiple development environments can easily be configured for more control. 
  
 This tool supports three target deployment environments: 
@@ -76,10 +76,10 @@ Secrets and other credentials are stored in [AWS Secrets Manager](https://aws.am
 
 ### Services 
 Services are generally applications that will need to be long running or continuously available. An example 
-[web API](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/aws-ecs-go-web-api) deployed as service 
-is provided by the devops project in [examples](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
+[web API](https://github.com/rogaha/devops/tree/master/examples/aws-ecs-go-web-api) deployed as service 
+is provided by the devops project in [examples](https://github.com/rogaha/devops/tree/master/examples). 
 
-The [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile) for 
+The [Dockerfile](https://github.com/rogaha/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile) for 
 the example service is defined as [multi-stage build](https://docs.docker.com/develop/develop-images/multistage-build/) 
 that includes building a base layer, running unittests and compiling the go application as static binary. The final 
 layer in the multi-stage uses [alpine:3.11](https://hub.docker.com/_/alpine?tab=description) as its base image and copies 
@@ -94,7 +94,7 @@ A service is built using the defined Dockerfile. The resulting image is pushed t
     developers to store, manage, and deploy Docker container images. Amazon ECR is integrated with Amazon Elastic 
     Container Service (ECS) simplifying the development to production workflow. 
  
-A service is configured for deployment in [services.go](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/build/cicd/internal/config/service.go).
+A service is configured for deployment in [services.go](https://github.com/rogaha/devops/blob/master/build/cicd/internal/config/service.go).
 Services are deployed to [AWS Fargate](https://aws.amazon.com/fargate/) based on the defined task definition. 
     
     AWS Fargate is a compute engine for Amazon ECS that allows you to run containers without having to manage servers or 
@@ -116,12 +116,12 @@ container image is tagged with the go.mod hash and pushed to the project's
 ### Functions 
 
 Functions are applications that can be executed in short period of time. An python script for 
-[Datadog Log Collection](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples/datadog-lambda-logcollector) 
+[Datadog Log Collection](https://github.com/rogaha/devops/tree/master/examples/datadog-lambda-logcollector) 
 deployed as a function is provided by the devops project in 
-[examples]((https://gitlab.com/geeks-accelerator/oss/devops/tree/master/examples). 
+[examples]((https://github.com/rogaha/devops/tree/master/examples). 
 
 A function is built using the defined 
-[Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/datadog-lambda-logcollector/Dockerfile).
+[Dockerfile](https://github.com/rogaha/devops/blob/master/examples/datadog-lambda-logcollector/Dockerfile).
 
  The `Dockerfile` should use a [lambdaci image](https://hub.docker.com/r/lambci/lambda/) as the base image. 
   
@@ -132,7 +132,7 @@ A function is built using the defined
 The build command then uses `docker cp` to extract all files from the resulting container image that are located in 
 `/var/task`. These files are zipped and uploaded to AWS S3 for deployment. 
 
-A function is configured for deployment in [functions.go](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/build/cicd/internal/config/function.go).
+A function is configured for deployment in [functions.go](https://github.com/rogaha/devops/blob/master/build/cicd/internal/config/function.go).
 Functions are deployed to [AWS Lambda](https://aws.amazon.com/lambda/).
 
     AWS Lambda lets you run code without provisioning or managing servers. You pay only for the compute time you consume 
@@ -144,16 +144,16 @@ Functions are deployed to [AWS Lambda](https://aws.amazon.com/lambda/).
 _cicd_ includes a minimalistic database migration script that implements 
 [github.com/geeks-accelerator/sqlxmigrate](https://godoc.org/github.com/geeks-accelerator/sqlxmigrate). It provides 
 schema versioning and migration rollback. The schema for the entire project is defined globally and is located inside 
-internal: [internal/schema](https://gitlab.com/geeks-accelerator/oss/devops/tree/master/build/cicd/internal/schema) 
+internal: [internal/schema](https://github.com/rogaha/devops/tree/master/build/cicd/internal/schema) 
 
 The example schema package provides two separate methods for handling schema migration:
-* [Migrations](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/build/cicd/internal/schema/migrations.go) -
+* [Migrations](https://github.com/rogaha/devops/blob/master/build/cicd/internal/schema/migrations.go) -
 List of direct SQL statements for each migration with defined version ID. A database table is created to persist 
 executed migrations. Upon run of each schema migration run, the migration logic checks the migration database table to 
 check if it’s already been executed. Thus, schema migrations are only ever executed once. Migrations are defined as a 
 function to enable complex migrations so results from query manipulated before being piped to the next query. 
 
-* [Init Schema](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/build/cicd/internal/schema/init_schema.go) - 
+* [Init Schema](https://github.com/rogaha/devops/blob/master/build/cicd/internal/schema/init_schema.go) - 
 If you have a lot of migrations, it can be a pain to run all them. For example, when you are deploying a new instance of 
 the app into a clean database. To prevent this, use the initSchema function that will run as-if no migration was run 
 before (in a new clean database). 
@@ -172,7 +172,7 @@ the install instructions for Go](http://golang.org/doc/install.html).
 
 To install _cicd_, simply run:
 ```
-$ go get gitlab.com/geeks-accelerator/oss/devops/build/cicd
+$ go get github.com/rogaha/devops/build/cicd
 ```
 
 Make sure your `PATH` includes the `$GOPATH/bin` directory so your commands can
@@ -194,7 +194,7 @@ user is only necessary for running _cicd_ locally.
 called `saas-starter-kit-deploy` with a defined JSON statement instead of using the visual 
 editor. The statement is rather large as each permission is granted individually. A copy of 
 the statement is stored in the devops repo at 
-[configs/aws-aim-deploy-policy.json](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/aws-aim-deploy-policy.json)
+[configs/aws-aim-deploy-policy.json](https://github.com/rogaha/devops/blob/master/configs/aws-aim-deploy-policy.json)
 
 3. Create new [AWS User](https://console.aws.amazon.com/iam/home?region=us-west-2#/users$new?step=details) 
 called `saas-starter-kit-deploy` with _Programmatic Access_ and _Attach existing policies directly_ with the policy 

@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
+	"github.com/rogaha/devops/pkg/devdeploy"
 )
 
 // Function define the name of a function.

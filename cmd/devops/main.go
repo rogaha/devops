@@ -9,8 +9,8 @@ import (
 
 	"github.com/gobuffalo/packr/v2"
 	"github.com/pkg/errors"
+	"github.com/rogaha/devops/pkg/devdeploy"
 	"github.com/urfave/cli"
-	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
 )
 
 // service is the name of the program used for logging, tracing, etc.
@@ -89,7 +89,7 @@ func injectBuildCicd(log *log.Logger, projectDir string, force bool) error {
 	}
 
 	// The current import path used for the tool that will need to be replaced.
-	curBasePath := "gitlab.com/geeks-accelerator/oss/devops"
+	curBasePath := "github.com/rogaha/devops"
 	curImportPath := filepath.Join(curBasePath, "/build/cicd")
 
 	// The link the schema directory in README.md to gitlab.

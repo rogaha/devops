@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/iancoleman/strcase"
 	"github.com/pkg/errors"
-	"gitlab.com/geeks-accelerator/oss/devops/pkg/devdeploy"
+	"github.com/rogaha/devops/pkg/devdeploy"
 )
 
 const (

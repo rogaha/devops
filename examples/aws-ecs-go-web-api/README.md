@@ -32,7 +32,7 @@ populate it with "dev" as the default value.
 
 ### Building 
 
-This service uses a multi-stage [Dockerfile](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile).
+This service uses a multi-stage [Dockerfile](https://github.com/rogaha/devops/blob/master/examples/aws-ecs-go-web-api/Dockerfile).
 Since most projects will have additional packages that are contained in a parent directory from the service itself, the 
 service must be built from the project root directory and reference the Dockerfile for the target service.  
 
@@ -47,4 +47,4 @@ as the entrypoint for the target layer `dev`. The `docker-compose.yaml` config f
 and mounts the source code for the project as a volume. Fresh with then monitor your code base and (re)starts your 
 service everytime you save a Go or template file. 
 
-Fresh using the configuration file [fresh-auto-reload.conf](https://gitlab.com/geeks-accelerator/oss/devops/blob/master/configs/fresh-auto-reload.conf)
+Fresh using the configuration file [fresh-auto-reload.conf](https://github.com/rogaha/devops/blob/master/configs/fresh-auto-reload.conf)

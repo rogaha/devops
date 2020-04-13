@@ -44,7 +44,7 @@ services:
       args:
         name: 'aws-ecs-go-web-api'
     volumes:
-      - ./:/go/src/gitlab.com/geeks-accelerator/oss/devops
+      - ./:/go/src/github.com/rogaha/devops
     ports:
       - 4000:4000
     networks:

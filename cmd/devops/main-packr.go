@@ -5,4 +5,4 @@
 // and any other packr generated files.
 package main
 
-import _ "gitlab.com/geeks-accelerator/oss/devops/cmd/devops/packrd"
+import _ "github.com/rogaha/devops/cmd/devops/packrd"
