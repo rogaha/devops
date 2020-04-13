@@ -3,7 +3,6 @@ package devdeploy
 import (
 	"compress/gzip"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/applicationautoscaling"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
@@ -359,7 +360,6 @@ func DeployServiceToTargetEnv(log *log.Logger, cfg *Config, targetService *Proje
 			log.Printf("\t\t\tNetworkMode: %s", *taskDefInput.NetworkMode)
 		}
 		log.Printf("\t\t\tTask Definitions: %d", len(taskDefInput.ContainerDefinitions))
-		log.Printf("Task Definitions: %v", taskDefInput.ContainerDefinitions)
 
 		// If memory or cpu for the task is not set, need to compute from container definitions.
 		if (taskDefInput.Cpu == nil || *taskDefInput.Cpu == "") || (taskDefInput.Memory == nil || *taskDefInput.Memory == "") {
