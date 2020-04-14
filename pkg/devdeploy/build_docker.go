@@ -256,12 +256,8 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 	var ciRegImg string
 	ciReg := os.Getenv("CI_REGISTRY")
 	if ciReg != "" {
-		ciLoginCmd = []string{
-			"docker", "login",
-			"-u", os.Getenv("CI_REGISTRY_USER"),
-			"-p", os.Getenv("CI_REGISTRY_PASSWORD"),
-			ciReg}
-		ciRegImg = os.Getenv("CI_REGISTRY_IMAGE")
+		ciLoginCmd = req.ReleaseDockerLoginCmd
+		ciRegImg = ciReg + "/" + os.Getenv("CI_REGISTRY_IMAGE")
 	}
 
 	var cmds [][]string
@@ -302,11 +298,9 @@ func BuildDocker(log *log.Logger, req *BuildDockerRequest) error {
 				buildBaseImage string
 			)
 			if ciReg != "" {
-				cmds = append(cmds, []string{
-					"docker", "login",
-					"-u", os.Getenv("CI_REGISTRY_USER"),
-					"-p", os.Getenv("CI_REGISTRY_PASSWORD"),
-					ciReg})
+				if len(req.ReleaseDockerLoginCmd) > 0 {
+					cmds = append(cmds, req.ReleaseDockerLoginCmd)
+				}
 
 				buildBaseImage = ciRegImg + ":" + stage.CacheTag
 				pushTargetImg = true
